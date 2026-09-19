@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Ambientes virtuais e variáveis locais
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Empacotamento e distribuição
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Ferramentas de desenvolvimento
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

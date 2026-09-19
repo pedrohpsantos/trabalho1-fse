@@ -1,0 +1,7 @@
+# Dependências do Sistema de Controle da Cabine 1 (Entrega 1 - Python)
+
+# Driver para acesso aos pinos GPIO da Raspberry Pi (instalar na placa real)
+RPi.GPIO>=0.7.1; sys_platform == 'linux'
+
+# Framework de testes automatizados
+pytest>=8.0.0
