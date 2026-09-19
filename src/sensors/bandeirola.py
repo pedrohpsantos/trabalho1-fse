@@ -8,7 +8,7 @@ from ..config import Fisica
 
 @dataclass(frozen=True)
 class BandeirolaReport:
-    """Relatório detalhado da medição da bandeirola ao término de sua travessia."""
+    """Registro de transição e cálculo de centro da bandeirola."""
     andar_nominal: int
     pos_nominal: int
     pos_entrada: int
@@ -19,38 +19,28 @@ class BandeirolaReport:
 
     def format_display(self) -> str:
         return (
-            "\n╔══════════════════════════════════════════════════════════════╗\n"
-            "║                   MEDIÇÃO DE BANDEIROLA                      ║\n"
-            "╠══════════════════════════════════════════════════════════════╣\n"
-            f"║ Borda de Entrada: {self.pos_entrada:>6} pulsos / mm                       ║\n"
-            f"║ Borda de Saída:   {self.pos_saida:>6} pulsos / mm                       ║\n"
-            f"║ Largura Medida:   {self.largura:>6} mm                                ║\n"
-            f"║ Centro Estimado:  {self.centro_estimado:>6} mm                                ║\n"
-            f"║ Andar Nominal:    Andar {self.andar_nominal} ({self.pos_nominal:>5} mm)                       ║\n"
-            f"║ Erro de Centro:   {self.erro_mm:>+6} mm                                ║\n"
-            "╚══════════════════════════════════════════════════════════════╝\n"
+            f"[BANDEIROLA] Andar nominal: {self.andar_nominal} | "
+            f"Centro: {self.centro_estimado} mm | "
+            f"Largura: {self.largura} mm | "
+            f"Erro: {self.erro_mm:+d} mm "
+            f"(Entrada: {self.pos_entrada} mm, Saída: {self.pos_saida} mm)"
         )
 
 
 class BandeirolaTracker:
-    """Rastreador de bordas e estimador de centro da bandeirola."""
+    """Processamento de bordas e cálculo de centro do sensor de andar."""
 
     def __init__(self) -> None:
         self.pos_entrada: Optional[int] = None
 
     def on_edge(self, entrada: bool, pos_encoder: int) -> Optional[BandeirolaReport]:
-        """Processa uma borda do sensor de andar.
-
-        Retorna BandeirolaReport apenas na borda de saída (após ter registrado uma entrada).
-        """
+        """Processa transição de borda no sensor de andar."""
         if entrada:
-            # Borda de subida (entrou na bandeirola)
             self.pos_entrada = pos_encoder
-            print(f"[SENSOR_ANDAR] Borda de ENTRADA detectada em: {pos_encoder} pulsos/mm")
+            print(f"[SENSOR_ANDAR] Transição de entrada: {pos_encoder} mm")
             return None
         else:
-            # Borda de descida (saiu da bandeirola)
-            print(f"[SENSOR_ANDAR] Borda de SAÍDA detectada em: {pos_encoder} pulsos/mm")
+            print(f"[SENSOR_ANDAR] Transição de saída: {pos_encoder} mm")
             if self.pos_entrada is not None:
                 pos_in = self.pos_entrada
                 self.pos_entrada = None

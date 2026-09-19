@@ -1,4 +1,4 @@
-"""Definição de interfaces e eventos da Camada de Abstração de Hardware (HAL)."""
+"""Interface base e estruturas de dados da camada HAL."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -6,9 +6,7 @@ import queue
 from typing import Union
 from ..config import MotorDirection
 
-# Tabela de transição de quadratura 4x ajustada para a polaridade da bancada física:
-# Movimento de subida incrementa a contagem de pulsos; descida decrementa.
-# Índice: (prev_a << 3) | (prev_b << 2) | (curr_a << 1) | curr_b
+# Tabela de transição de quadratura 4x (índice: (a_ant << 3) | (b_ant << 2) | (a_atual << 1) | b_atual)
 QUADRATURE_TABLE = (
      0,  1, -1,  0,
     -1,  0,  0,  1,
@@ -19,7 +17,7 @@ QUADRATURE_TABLE = (
 
 @dataclass(frozen=True)
 class CortinaEvent:
-    """Evento da cortina de luz (True = obstruída, False = liberada)."""
+    """Evento da cortina de luz (obstruída ou liberada)."""
     obstruida: bool
 
 

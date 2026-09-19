@@ -1,8 +1,4 @@
-"""Script de diagnóstico físico de pinos na Raspberry Pi (equivalente a diagnostico.rs).
-
-Testa estados lógicos dos pinos de entrada, monitora pulsos de encoder e testa
-combinações de acionamento do motor para identificar a pinagem ativa da bancada.
-"""
+"""Utilitário de validação elétrica e lógica de pinos GPIO na Raspberry Pi."""
 
 import sys
 import time
@@ -10,21 +6,19 @@ import time
 try:
     import RPi.GPIO as GPIO
 except (ImportError, RuntimeError) as e:
-    print(f"❌ RPi.GPIO não está disponível neste ambiente: {e}")
-    print("Este utilitário deve ser executado diretamente na Raspberry Pi conectada à bancada.")
+    print(f"[ERRO] RPi.GPIO indisponível: {e}")
+    print("Execução restrita a Raspberry Pi com GPIO ativa.")
     sys.exit(1)
 
 
 def main() -> None:
-    print("🔍 ========================================================")
-    print("🔍 INICIANDO DIAGNÓSTICO FÍSICO DE PINOS NA RASPBERRY PI (PYTHON)")
-    print("🔍 ========================================================\n")
+    print("--- DIAGNÓSTICO DE PINOS GPIO ---")
 
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
 
     # 1. Leitura do estado atual dos pinos de entrada candidatos
-    print("📊 Estado atual dos pinos de entrada candidatos:")
+    print("Estado atual dos pinos de entrada candidatos:")
     input_pins = [
         (0, "SENSOR_ANDAR (Cabine 1 - Tabela / Bancada 36)"),
         (11, "SENSOR_ANDAR (Cabine 1 - Widget)"),
@@ -50,7 +44,7 @@ def main() -> None:
             print(f"   GPIO {pin:>2} [ {desc:<45} ]: [ERRO: {e}]")
 
     # 2. Monitoramento de pulsos de encoder em múltiplas portas
-    print("\n📡 Configurando contadores nos encoders 20/21 e 5/6...")
+    print("\nConfigurando contadores nos encoders 20/21 e 5/6...")
     contadores = {"cab1": 0, "cab2": 0}
 
     def count_cab1_callback(_ch):
@@ -82,7 +76,7 @@ def main() -> None:
     ]
 
     for nome, pwm_pin, dir1_pin, dir2_pin in configs:
-        print(f"\n🚀 Testando {nome}")
+        print(f"\nTestando {nome}")
         contadores["cab1"] = 0
         contadores["cab2"] = 0
 
@@ -108,15 +102,15 @@ def main() -> None:
 
             c1 = contadores["cab1"]
             c2 = contadores["cab2"]
-            print("   ✅ Executado com sucesso!")
-            print(f"   📈 Pulsos detectados no Encoder Cabine 1 (20/21): {c1}")
-            print(f"   📈 Pulsos detectados no Encoder Cabine 2 (5/6):   {c2}")
+            print("   [OK] Executado com sucesso.")
+            print(f"   Pulsos detectados no Encoder Cabine 1 (20/21): {c1}")
+            print(f"   Pulsos detectados no Encoder Cabine 2 (5/6):   {c2}")
             if c1 > 0 or c2 > 0:
-                print(f"   🎯 >>> SUCESSO! MOVIMENTO DETECTADO COM {nome}! <<<")
+                print(f"   [SUCESSO] Movimento detectado com {nome}.")
                 break
 
         except Exception as e:
-            print(f"   ❌ Falha ao acionar pinos ({pwm_pin}, {dir1_pin}, {dir2_pin}): {e}")
+            print(f"   [ERRO] Falha ao acionar pinos ({pwm_pin}, {dir1_pin}, {dir2_pin}): {e}")
 
         time.sleep(0.5)
 
@@ -125,7 +119,7 @@ def main() -> None:
     except Exception:
         pass
 
-    print("\n🏁 Diagnóstico finalizado.")
+    print("\nDiagnóstico finalizado.")
 
 
 if __name__ == "__main__":

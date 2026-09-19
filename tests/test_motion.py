@@ -46,7 +46,7 @@ class TestBandeirolaTracker(unittest.TestCase):
 
         # Verifica formatação de string sem exceções
         display = report_out.format_display()
-        self.assertIn("MEDIÇÃO DE BANDEIROLA", display)
+        self.assertIn("[BANDEIROLA]", display)
         self.assertIn("3010 mm", display)
 
 

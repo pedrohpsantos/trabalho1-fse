@@ -1,27 +1,27 @@
-# Entrega 1 — Módulo da GPIO: Controle de Uma Cabine de Elevador (Python)
+# Controle de Cabine de Elevador — Módulo GPIO (Python)
 
-Trabalho 1 — Entrega 1 da disciplina de **Fundamentos de Sistemas Embarcados (2026/2)**  
+Trabalho 1 — Entrega 1 | Fundamentos de Sistemas Embarcados (2026/2)  
 Faculdade do Gama — Universidade de Brasília (FGA-UnB)
 
 ---
 
-## 1. Visão Geral
+## 1. Descrição do Sistema
 
-Esta solução implementa o módulo de controle da **Cabine 1** de um simulador de elevador com modelo reduzido de 3 andares (0, 1 e 2), utilizando a linguagem de programação **Python 3**. O projeto atende rigorosamente a todos os requisitos de baixo e alto nível especificados no [`Entrega_1.md`](../Entrega_1.md) e está sincronizado com os ajustes validados na bancada física (Bancada 36):
+Implementação do módulo de controle da Cabine 1 para modelo reduzido de elevador de 3 andares (0, 1 e 2). O sistema gerencia o acionamento de potência, leitura de sensores e posicionamento em malha fechada via Raspberry Pi:
 
-- **Saídas Digitais on/off (`DIR1` e `DIR2`)**: Controle dos estados Livre, Subir, Descer e Freio.
-- **Saída PWM (1 kHz)**: Modulação de potência do motor de tração com rampa de partida para superar o atrito estático ($\ge 20\%$).
-- **Entrada com Interrupção (Encoder em Quadratura 4×)**: Leitura nos pinos `ENC_A` e `ENC_B` por interrupção de hardware em ambas as bordas (`GPIO.BOTH`), decodificação por tabela de transição com polaridade da bancada (subida incrementa, descida decrementa) e contador de 32 bits com sinal.
-- **Entrada on/off com Debounce (Cortina de Luz)**: Tratamento do sinal com janela de debounce temporal (40 ms) e notificação imediata de obstrução e liberação.
-- **Sensor de Andar (Bandeirola)**: Leitura de ambas as bordas (entrada e saída), registrando a posição do encoder, calculando o centro estimado pela média e o erro relativo ao andar nominal mais próximo (0, 3000 ou 6000 mm).
-- **Controle de Nivelamento**: Parada suave dentro da faixa de tolerância de **$\pm 10\text{ mm}$** com acionamento do freio elétrico.
-- **Proteção de Fim de Curso**: Bloqueio de comandos fora da faixa de $0$ a $6000\text{ mm}$.
-- **Tratamento de SIGINT (`Ctrl+C`)**: Zeramento imediato do PWM, acionamento do freio elétrico e liberação segura dos pinos de GPIO.
-- **Ausência de Busy-Wait**: Todas as esperas e temporizações utilizam sleeps e filas de eventos não-bloqueantes.
+- **Controle de Tração (Ponte H)**: Sinais digitais `DIR1` e `DIR2` para os estados Livre, Subir, Descer e Freio.
+- **Modulação PWM**: Frequência de 1 kHz para controle de velocidade com rampa e piso de partida ($\ge 20\%$) para compensação de atrito estático.
+- **Encoder em Quadratura (4x)**: Amostragem por interrupção (`GPIO.BOTH`) nos canais `ENC_A` e `ENC_B`, decodificação por tabela de transição e contador de 32 bits com sinal.
+- **Cortina de Luz**: Entrada digital com filtro de debounce temporal (40 ms) e notificação de eventos de obstrução.
+- **Sensor de Andar (Bandeirola)**: Detecção de transições de entrada e saída, cálculo do centro geométrico e desvio em relação à cota nominal.
+- **Nivelamento**: Tolerância de parada de $\pm 10\text{ mm}$ com corte de PWM e aplicação de freio elétrico.
+- **Fim de Curso**: Bloqueio de avanço além da faixa operacional ($0$ a $6000\text{ mm}$).
+- **Parada Segura (`SIGINT`)**: Tratamento de sinal `Ctrl+C` com desaceleração, acionamento do freio e liberação de periféricos (`GPIO.cleanup()`).
+- **Arquitetura Não-Bloqueante**: Ausência de busy-wait, empregando temporizações cooperativas e filas sincronizadas (`queue.Queue`).
 
 ---
 
-## 2. Mapeamento de Pinos da Cabine 1 (Raspberry Pi — Pinos BCM)
+## 2. Mapeamento de Pinos da Cabine 1 (Raspberry Pi — BCM)
 
 | Sinal | Função | GPIO RPi (BCM) | Direção | Modalidade |
 |:---|:---|:---:|:---:|:---|
@@ -33,7 +33,7 @@ Esta solução implementa o módulo de controle da **Cabine 1** de um simulador 
 | `CORTINA` | Cortina de luz da porta | **26** | Entrada | Digital on/off (debounce 40ms) |
 | `SENSOR_ANDAR` | Sensor de andar (bandeirola) | **0** | Entrada | Interrupção (ambas as bordas) |
 
-> ℹ️ **Presets de Execução**:
+> **Presets de Execução**:
 > - Padrão (**Bancada 36**): `PWM=13, DIR1=22, DIR2=23, ENC=20/21, CORTINA=26, SENSOR=0`.
 > - **Widget Alternativo**: Se a bancada estiver usando a configuração alternativa do ThingsBoard (`DIR1=17, DIR2=27, SENSOR=11`), execute com `--widget` ou `--bancada`.
 
@@ -48,46 +48,44 @@ Esta solução implementa o módulo de controle da **Cabine 1** de um simulador 
 
 ---
 
-## 3. Arquitetura de Software em Python
+## 3. Arquitetura de Software
 
 ```
 entrega1_python/
-├── Makefile                     # Automação de execução, testes e diagnóstico
+├── Makefile                     # Alvos de automação (execução, testes e diagnóstico)
 ├── README.md                    # Documentação do projeto
-├── requirements.txt             # Dependências (RPi.GPIO, pytest)
+├── requirements.txt             # Dependências de execução e teste (RPi.GPIO, pytest)
 ├── main.py                      # Ponto de entrada raiz
-├── diagnostico.py               # Utilitário de teste e diagnóstico físico de pinos
+├── diagnostico.py               # Utilitário de validação elétrica de pinos
 ├── tests/
 │   ├── __init__.py
-│   └── test_motion.py           # Testes automatizados (bandeirola, rampas, limites, física)
+│   └── test_motion.py           # Testes unitários (cinemática, limites e quadratura)
 └── src/
-    ├── __init__.py              # Inicialização de pacote e configuração segura de encoding UTF-8
-    ├── main.py                  # Ponto de entrada interno, tratamento de SIGINT e threads
-    ├── config.py                # Constantes de pinos, física, andares e limites
-    ├── hal/                     # Camada de Abstração de Hardware (HAL)
+    ├── __init__.py              # Inicialização do pacote
+    ├── main.py                  # Ponto de entrada interno e orquestração de threads
+    ├── config.py                # Mapeamento de hardware e parâmetros físicos
+    ├── hal/                     # Camada de Abstração de Hardware
     │   ├── __init__.py
-    │   ├── base.py              # Classe abstrata ElevatorHardware, tipos de eventos e QUADRATURE_TABLE
-    │   ├── mock.py              # Driver simulado com física integrada para testes locais
-    │   └── rpi.py               # Driver real para Raspberry Pi com RPi.GPIO
+    │   ├── base.py              # Interface abstrata e tabela de quadratura 4x
+    │   ├── mock.py              # Driver simulador com cinemática local
+    │   └── rpi.py               # Driver de hardware para Raspberry Pi (RPi.GPIO)
     ├── sensors/                 # Tratamento de sinais dos sensores
     │   ├── __init__.py
-    │   └── bandeirola.py        # Detector de bordas, estimador de centro e cálculo de erro
-    ├── controller/              # Lógica de controle de alto nível
+    │   └── bandeirola.py        # Processamento de bordas e cálculo de centro
+    ├── controller/              # Lógica de controle e cinemática
     │   ├── __init__.py
-    │   ├── elevator.py          # Máquina de estados da cabine e despacho de eventos
-    │   └── motion.py            # Gerador de perfil de movimento (rampas de aceleração/desaceleração)
-    └── cli/                     # Interface de terminal (CLI)
+    │   ├── elevator.py          # Máquina de estados e sincronização de eventos
+    │   └── motion.py            # Planejador de trajetórias e rampas de aceleração
+    └── cli/                     # Interface de terminal
         ├── __init__.py
-        └── cli.py               # Interpretador de comandos interativos
+        └── cli.py               # Interpretador de comandos
 ```
 
 ---
 
 ## 4. Instruções de Instalação e Execução
 
-### 4.1 Pré-requisitos e Dependências
-
-Instale as dependências com:
+### 4.1 Instalação de Dependências
 
 ```bash
 pip install -r requirements.txt
@@ -96,36 +94,33 @@ pip install -r requirements.txt
 ### 4.2 Execução na Raspberry Pi (Hardware Real)
 
 ```bash
-# Executar na Bancada 36 (padrão)
+# Execução na Bancada 36 (padrão)
 python main.py --rpi
 
-# Ou se for necessário usar os pinos do widget alternativo
+# Execução com pinagem do widget ThingsBoard
 python main.py --rpi --widget
 
-# Ou via Makefile
+# Via Makefile
 make rpi
 ```
 
-### 4.3 Diagnóstico de Pinos Físicos na Raspberry Pi
+### 4.3 Diagnóstico de Pinos GPIO
 
-Caso queira validar os pinos da bancada antes da execução completa:
+Para verificação do estado elétrico dos pinos antes da operação:
 
 ```bash
 python diagnostico.py
 
-# Ou via Makefile
+# Via Makefile
 make diagnostico
 ```
 
-### 4.4 Execução Local no Computador de Desenvolvimento (Modo Simulado)
+### 4.4 Execução em Modo Simulado (Sem Hardware Real)
 
-O programa detecta automaticamente se não estiver em uma Raspberry Pi e executa no modo simulado com cinemática integrada:
+Detectado automaticamente em ambiente sem suporte a `RPi.GPIO`:
 
 ```bash
 python main.py --mock
-
-# Ou simplesmente
-python main.py
 
 # Ou via Makefile
 make run
@@ -136,31 +131,27 @@ make run
 ```bash
 pytest tests -v
 
-# Ou via Makefile
+# Via Makefile
 make test
 ```
 
 ---
 
-## 5. Interface Interativa de Terminal (CLI)
+## 5. Interface de Linha de Comando (CLI)
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║        SISTEMA DE CONTROLE DE ELEVADORES — FSE 2026/2        ║
-║                   ENTREGA 1 — CABINE 1 (PYTHON)             ║
-╠══════════════════════════════════════════════════════════════╣
-║ Comandos disponíveis:                                        ║
-║   andar <0|1|2>           - Move para o andar desejado       ║
-║   motor <dir> <duty>      - dir: livre | subir | descer | freio║
-║                             duty: 0 a 100                    ║
-║   status                  - Exibe estado dos sensores e motor║
-║   parar                   - Para o motor e aciona o freio    ║
-║   ajuda                   - Exibe esta mensagem de ajuda     ║
-║   sair                    - Encerra o programa graciosamente ║
-╚══════════════════════════════════════════════════════════════╝
+--- CONTROLE DA CABINE 1 (FSE) ---
+Comandos disponíveis:
+  andar <0|1|2>           Desloca para o andar especificado
+  motor <dir> <duty>      Acionamento direto (livre|subir|descer|freio, 0-100)
+  status                  Exibe telemetria de sensores e atuadores
+  parar                   Interrompe movimento e aciona freio
+  ajuda                   Exibe lista de comandos
+  sair                    Encerra a aplicação
+----------------------------------
 ```
 
-Exemplos:
+Exemplos de uso:
 - `andar 1`
 - `motor subir 40`
 - `status`

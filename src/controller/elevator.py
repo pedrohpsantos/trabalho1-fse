@@ -40,8 +40,8 @@ class ElevatorController:
                 self.duty_atual = 0.0
                 self.hardware.set_motor(MotorDirection.FREIO, 0.0)
                 print(
-                    f"\n🎉 [CHEGADA] Cabine 1 chegou e nivelou no Andar {update.andar}! "
-                    f"Posição: {update.posicao} mm (Erro: {update.erro_nivelamento:+d} mm)\n"
+                    f"\n[CHEGADA] Cabine nivelada no Andar {update.andar}. "
+                    f"Posição: {update.posicao} mm (erro: {update.erro_nivelamento:+d} mm)\n"
                 )
 
             elif isinstance(update, LimiteCursoAtingidoUpdate):
@@ -49,18 +49,18 @@ class ElevatorController:
                 self.duty_atual = 0.0
                 self.hardware.set_motor(MotorDirection.FREIO, 0.0)
                 print(
-                    f"\n⚠️ [SEGURANÇA] Fim de curso atingido na posição {update.posicao} mm! "
-                    f"Movimento bloqueado.\n"
+                    f"\n[ALERTA] Limite de curso atingido: {update.posicao} mm. "
+                    "Movimento bloqueado.\n"
                 )
 
     def handle_event(self, event: HardwareEvent) -> None:
-        """Processa eventos assíncronos de hardware (cortina e sensor de andar)."""
+        """Processa eventos assíncronos de sensores."""
         with self._lock:
             if isinstance(event, CortinaEvent):
                 if event.obstruida:
-                    print("\n🚨 [CORTINA] >>> PORTA OBSTRUÍDA! Objeto detectado na passagem. <<<")
+                    print("\n[CORTINA] Obstrução detectada.")
                 else:
-                    print("\n🟢 [CORTINA] >>> PORTA LIBERADA! Passagem desobstruída. <<<")
+                    print("\n[CORTINA] Passagem desobstruída.")
 
             elif isinstance(event, BandeirolaEvent):
                 report = self.bandeirola_tracker.on_edge(event.entrada, event.pos_encoder)
@@ -68,7 +68,7 @@ class ElevatorController:
                     print(report.format_display())
 
     def ir_para_andar(self, andar: int) -> None:
-        """Comanda a cabine para se deslocar até o andar especificado (0, 1 ou 2)."""
+        """Inicia trajetória até o andar especificado."""
         pos_alvo = None
         for a, p in Fisica.ANDARES_NOMINAIS:
             if a == andar:
@@ -76,35 +76,34 @@ class ElevatorController:
                 break
 
         if pos_alvo is None:
-            raise ValueError(f"Andar inválido: {andar}. Andares válidos: 0, 1, 2.")
+            raise ValueError(f"Andar inválido: {andar}.")
 
         with self._lock:
-            print(f"▶️ Comandando Cabine 1 para Andar {andar} (alvo: {pos_alvo} mm / pulsos)...")
+            print(f"[COMANDO] Deslocamento para o Andar {andar} (alvo: {pos_alvo} mm)")
             self.motion.comandar_andar(andar, pos_alvo)
 
     def comando_motor(self, direcao: MotorDirection, duty: float) -> None:
-        """Comanda acionamento direto do motor."""
+        """Aciona diretamente o motor de tração."""
         with self._lock:
-            print(f"⚙️ Comando manual do motor: Direção = {direcao.value}, Duty = {duty:.1f}%")
+            print(f"[COMANDO] Manual: {direcao.value}, duty={duty:.1f}%")
             self.motion.comandar_manual(direcao, duty)
 
     def parar(self) -> None:
-        """Para a cabine imediatamente acionando o freio."""
+        """Interrompe movimento e aciona freio elétrico."""
         with self._lock:
-            print("⏹️ Parando motor e acionando freio...")
+            print("[COMANDO] Parada de motor e acionamento de freio.")
             self.motion.parar()
             self.direcao_atual = MotorDirection.FREIO
             self.duty_atual = 0.0
             self.hardware.set_motor(MotorDirection.FREIO, 0.0)
 
     def print_status(self) -> None:
-        """Imprime o status consolidado no terminal."""
+        """Exibe telemetria atual da cabine."""
         with self._lock:
             pos = self.hardware.get_position()
             cortina = self.hardware.is_curtain_obstructed()
             sensor_andar = self.hardware.is_floor_sensor_active()
 
-            # Estima o andar mais próximo e verifica nivelamento
             menor_dist = float("inf")
             andar_estimado = 0
             pos_andar = 0
@@ -117,21 +116,17 @@ class ElevatorController:
                     pos_andar = p
 
             nivelado = menor_dist <= Fisica.TOLERANCIA_NIVELAMENTO_MM
-            nivelado_str = "SIM (NIVELADO)" if nivelado else "NÃO"
-            cortina_str = "OBSTRUÍDA (1)" if cortina else "Livre (0)"
-            sensor_str = "NA BANDEIROLA (1)" if sensor_andar else "Entre andares (0)"
-            erro_str = f"{pos - pos_andar:+d} mm"
+            erro = pos - pos_andar
 
             print(
-                "\n┌──────────────────────── STATUS CABINE 1 ────────────────────────┐\n"
-                f"│ Posição Atual:        {pos:>6} pulsos ({pos:>6} mm)                 │\n"
-                f"│ Andar Estimado:       Andar {andar_estimado} (nominal: {pos_andar:>5} mm)                 │\n"
-                f"│ Nivelamento:          {nivelado_str:<16} (erro: {erro_str:>7})       │\n"
-                f"│ Direção Motor:        {self.direcao_atual.value:<16}                             │\n"
-                f"│ Duty Cycle PWM:       {self.duty_atual:>5.1f}%                                  │\n"
-                f"│ Cortina de Luz:       {cortina_str:<16}                             │\n"
-                f"│ Sensor de Andar:      {sensor_str:<16}                             │\n"
-                "└─────────────────────────────────────────────────────────────────┘\n"
+                "\n--- TELEMETRIA CABINE 1 ---\n"
+                f"Posição:         {pos:>5} mm ({pos:>5} pulsos)\n"
+                f"Andar estimado:  Andar {andar_estimado} (nominal: {pos_andar} mm)\n"
+                f"Nivelamento:     {'NIVELADO' if nivelado else 'NAO NIVELADO'} (erro: {erro:+d} mm)\n"
+                f"Motor:           {self.direcao_atual.value} | PWM: {self.duty_atual:.1f}%\n"
+                f"Cortina de luz:  {'OBSTRUIDA' if cortina else 'DESOBSTRUIDA'}\n"
+                f"Sensor de andar: {'ATIVO (bandeirola)' if sensor_andar else 'INATIVO'}\n"
+                "---------------------------"
             )
 
     def cleanup(self) -> None:

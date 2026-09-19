@@ -1,4 +1,4 @@
-"""Implementação simulada (Mock) do hardware para desenvolvimento e testes locais."""
+"""Driver simulado para execução e testes em ambiente de desenvolvimento."""
 
 import queue
 import threading
@@ -10,7 +10,7 @@ from ..config import MotorDirection, Fisica
 
 
 class MockHardware(ElevatorHardware):
-    """Hardware simulado em memória com física realista de elevador."""
+    """Hardware simulado em memória com aproximação cinemática."""
 
     def __init__(self, initial_position: int = 0) -> None:
         self._lock = threading.Lock()
@@ -21,18 +21,16 @@ class MockHardware(ElevatorHardware):
         self._event_queue: queue.Queue = queue.Queue()
         self._running: bool = True
 
-        # Inicializa se já começa dentro de alguma bandeirola
         self._sensor_andar_ativo: bool = any(
             abs(initial_position - pos_nominal) <= 100
             for _andar, pos_nominal in Fisica.ANDARES_NOMINAIS
         )
 
-        # Inicia a thread de física da simulação
         self._thread = threading.Thread(target=self._physics_loop, daemon=True)
         self._thread.start()
 
     def _physics_loop(self) -> None:
-        dt = 0.02  # 20 ms por tick
+        dt = 0.02  # 20 ms
         with self._lock:
             dentro_bandeirola_anterior = self._sensor_andar_ativo
 
@@ -44,9 +42,8 @@ class MockHardware(ElevatorHardware):
                 duty = self._duty_cycle
                 p = self._posicao
 
-                # Fator de atrito estático: abaixo de 10%, o motor não arranca nem se move
+                # Limiar de atrito estático
                 if duty >= 10.0:
-                    # Velocidade proporcional ao duty: a 100% duty ~ 800 mm/s = 16 mm por tick de 20ms
                     vel_mm_por_tick = int(round((duty / 100.0) * 16.0))
 
                     if dir_atual == MotorDirection.SUBIR:
@@ -56,10 +53,10 @@ class MockHardware(ElevatorHardware):
 
                     self._posicao = p
 
-                # Simulação da bandeirola: largura de ~200mm (±100mm) centrada em cada andar nominal
+                # Intervalo da bandeirola (+-100 mm ao redor da cota nominal)
                 dentro_alguma = False
                 for _andar, pos_nominal in Fisica.ANDARES_NOMINAIS:
-                    largura_semi = 100  # ±100 mm ao redor do andar nominal
+                    largura_semi = 100
                     if abs(p - pos_nominal) <= largura_semi:
                         dentro_alguma = True
                         break

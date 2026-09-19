@@ -1,4 +1,4 @@
-"""Planejador de movimento e geração de perfis de rampa da Cabine 1."""
+"""Planejador de trajetória e cálculo de perfis de velocidade da cabine."""
 
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -53,13 +53,13 @@ MotionState = Union[EstadoParado, EstadoMovendoParaAndar, EstadoManual]
 
 
 class MotionPlanner:
-    """Gerador de perfil de movimento com rampas de aceleração e desaceleração."""
+    """Máquina de estados para cálculo de rampas e paradas de nivelamento."""
 
     def __init__(self) -> None:
         self.estado: MotionState = EstadoParado()
 
     def comandar_andar(self, andar_alvo: int, pos_alvo: int) -> None:
-        """Comanda a viagem até um andar de destino."""
+        """Inicia transição para o andar alvo."""
         self.estado = EstadoMovendoParaAndar(
             andar_alvo=andar_alvo,
             pos_alvo=pos_alvo,
@@ -67,18 +67,18 @@ class MotionPlanner:
         )
 
     def comandar_manual(self, direcao: MotorDirection, duty: float) -> None:
-        """Comanda acionamento manual do motor."""
+        """Configura acionamento em modo manual."""
         if direcao in (MotorDirection.FREIO, MotorDirection.LIVRE) or duty <= 0.0:
             self.estado = EstadoParado()
         else:
             self.estado = EstadoManual(direcao=direcao, duty=duty)
 
     def parar(self) -> None:
-        """Para qualquer movimento ativo."""
+        """Interrompe qualquer movimento e comuta para repouso."""
         self.estado = EstadoParado()
 
     def update(self, pos_atual: int) -> MotionUpdate:
-        """Atualiza o perfil de movimento a cada ciclo da malha de controle (ex: 50 ms)."""
+        """Calcula o ciclo de controle com base na cota atual."""
         if isinstance(self.estado, EstadoParado):
             return ContinuarUpdate(
                 direcao=MotorDirection.FREIO,
@@ -108,7 +108,7 @@ class MotionPlanner:
             erro = alvo - pos_atual
             dist = abs(erro)
 
-            # 1. Verificação da tolerância de nivelamento (±10 mm)
+            # Parada por tolerância de nivelamento (+-10 mm)
             if dist <= Fisica.TOLERANCIA_NIVELAMENTO_MM:
                 self.estado = EstadoParado()
                 return ChegouAoAndarUpdate(
@@ -117,10 +117,10 @@ class MotionPlanner:
                     erro_nivelamento=erro,
                 )
 
-            # 2. Determinação do sentido de movimento
+            # Sentido de movimentação
             direcao = MotorDirection.SUBIR if erro > 0 else MotorDirection.DESCER
 
-            # 3. Proteção de fim de curso
+            # Verificação de fim de curso
             if direcao == MotorDirection.SUBIR and pos_atual >= Fisica.POS_MAXIMA_MM:
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
@@ -128,13 +128,11 @@ class MotionPlanner:
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
 
-            # 4. Perfil de velocidade (Rampas de Aceleração e Desaceleração)
+            # Cálculo de velocidade (aceleração progressiva ou desaceleração por aproximação)
             duty_atual = self.estado.duty_atual
             if dist > Fisica.DISTANCIA_DESACELERACAO_MM:
-                # Rampa de aceleração suave: incrementa até atingir CRUISE_DUTY (+4% por ciclo de 50ms)
                 duty_atual = min(duty_atual + 4.0, Fisica.CRUISE_DUTY)
             else:
-                # Rampa de desaceleração progressiva aproximando do andar
                 ratio = float(dist) / float(Fisica.DISTANCIA_DESACELERACAO_MM)
                 target_duty = Fisica.MIN_DUTY_APROXIMACAO + ratio * (Fisica.CRUISE_DUTY - Fisica.MIN_DUTY_APROXIMACAO)
                 duty_atual = max(Fisica.MIN_DUTY_APROXIMACAO, min(duty_atual, target_duty))

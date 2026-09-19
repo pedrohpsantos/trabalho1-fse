@@ -43,60 +43,59 @@ else:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sistema de Controle da Cabine 1 - FSE 2026/2 (Python)"
+        description="Sistema de Controle da Cabine 1 - FSE 2026/2"
     )
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Força a execução em modo simulado (Mock com física integrada)",
+        help="Execução em modo simulado (cinemática local)",
     )
     parser.add_argument(
         "--rpi",
         action="store_true",
-        help="Força a execução com hardware real na Raspberry Pi (RPi.GPIO)",
+        help="Execução na Raspberry Pi com driver RPi.GPIO",
     )
     parser.add_argument(
         "--widget",
         "--bancada",
         action="store_true",
         dest="widget",
-        help="Utiliza preset alternativo do widget ThingsBoard (DIR1=17, DIR2=27, SENSOR=11)",
+        help="Preset alternativo (DIR1=17, DIR2=27, SENSOR=11)",
     )
 
     args = parser.parse_args()
 
-    print("Inicializando Sistema de Controle da Cabine 1 (FSE 2026/2 - Python)...")
+    print("[INIT] Inicializando controle da Cabine 1...")
 
     # Configuração dos pinos
     if args.widget:
-        print("⚙️ Preset ativo: Widget alternativo (DIR1=17, DIR2=27, SENSOR=11)")
+        print("[CONFIG] Preset: Widget alternativo (DIR1=17, DIR2=27, SENSOR=11)")
         pin_config = PinConfig.widget_bancada()
     else:
-        print("⚙️ Preset ativo: Bancada 36 (PWM=13, DIR1=22, DIR2=23, SENSOR=0)")
+        print("[CONFIG] Preset: Bancada 36 (PWM=13, DIR1=22, DIR2=23, SENSOR=0)")
         pin_config = PinConfig.tabela_oficial()
 
-    # Seleção da camada HAL (Real ou Mock)
+    # Seleção da camada HAL
     hardware: ElevatorHardware
     if args.rpi:
-        print("🔧 Camada HAL: Modo Raspberry Pi Forçado (RPi.GPIO / interrupções)")
+        print("[HAL] Modo Raspberry Pi configurado.")
         try:
             hardware = RpiHardware(pin_config)
         except Exception as e:
-            print(f"❌ Falha ao inicializar periféricos da Raspberry Pi: {e}")
+            print(f"[ERRO] Falha ao inicializar periféricos: {e}")
             sys.exit(1)
     elif args.mock or not RPI_GPIO_AVAILABLE:
         if not args.mock and not RPI_GPIO_AVAILABLE:
-            print("💡 Camada HAL: RPi.GPIO não detectado neste sistema. Ativando Modo Simulado (Mock).")
+            print("[HAL] RPi.GPIO não detectado. Ativando simulação local.")
         else:
-            print("💡 Camada HAL: Modo Simulado Ativo (Mock local com física integrada).")
+            print("[HAL] Modo simulado ativo.")
         hardware = MockHardware()
     else:
-        # RPI_GPIO disponível e mock não solicitado
-        print("🔧 Camada HAL: Modo Raspberry Pi Detectado e Ativo.")
+        print("[HAL] Modo Raspberry Pi detectado.")
         try:
             hardware = RpiHardware(pin_config)
         except Exception as e:
-            print(f"❌ Falha ao inicializar RPi.GPIO: {e}. Alternando para Mock.")
+            print(f"[ERRO] Falha ao inicializar RPi.GPIO: {e}. Alternando para simulador.")
             hardware = MockHardware()
 
     event_queue = hardware.get_event_queue()
@@ -104,17 +103,16 @@ def main() -> None:
     running_event = threading.Event()
     running_event.set()
 
-    # Tratamento de interrupção SIGINT (Ctrl+C)
+    # Interrupção de emergência (Ctrl+C)
     def sigint_handler(_sig, _frame) -> None:
-        print("\n\n🛑 [SIGINT] Sinal Ctrl+C capturado pelo sistema!")
-        print("🛑 Acionando freio elétrico de emergência (DIR1=1, DIR2=1), zerando PWM...")
+        print("\n[SIGINT] Interrupção capturada. Acionando freio e liberando GPIO...")
         running_event.clear()
         try:
             controller.parar()
             controller.cleanup()
         except Exception:
             pass
-        print("✅ Recursos de GPIO desativados e liberados com segurança. Encerrando.")
+        print("[INFO] Recursos liberados. Encerrando processo.")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, sigint_handler)
@@ -152,7 +150,7 @@ def main() -> None:
     except KeyboardInterrupt:
         sigint_handler(signal.SIGINT, None)
 
-    print("Sistema de Controle da Cabine 1 encerrado com sucesso.")
+    print("[INFO] Sistema finalizado.")
 
 
 if __name__ == "__main__":

@@ -15,35 +15,29 @@ class Cli:
     @staticmethod
     def print_banner() -> None:
         print(
-            "\n╔══════════════════════════════════════════════════════════════╗\n"
-            "║        SISTEMA DE CONTROLE DE ELEVADORES — FSE 2026/2        ║\n"
-            "║                   ENTREGA 1 — CABINE 1 (PYTHON)             ║\n"
-            "╠══════════════════════════════════════════════════════════════╣\n"
-            "║ Comandos disponíveis:                                        ║\n"
-            "║   andar <0|1|2>           - Move para o andar desejado       ║\n"
-            "║   motor <dir> <duty>      - dir: livre | subir | descer | freio║\n"
-            "║                             duty: 0 a 100                    ║\n"
-            "║   status                  - Exibe estado dos sensores e motor║\n"
-            "║   parar                   - Para o motor e aciona o freio    ║\n"
-            "║   ajuda                   - Exibe esta mensagem de ajuda     ║\n"
-            "║   sair                    - Encerra o programa graciosamente ║\n"
-            "╚══════════════════════════════════════════════════════════════╝\n"
+            "\n--- CONTROLE DA CABINE 1 (FSE) ---\n"
+            "Comandos disponíveis:\n"
+            "  andar <0|1|2>           Desloca para o andar especificado\n"
+            "  motor <dir> <duty>      Acionamento direto (livre|subir|descer|freio, 0-100)\n"
+            "  status                  Exibe telemetria de sensores e atuadores\n"
+            "  parar                   Interrompe movimento e aciona freio\n"
+            "  ajuda                   Exibe lista de comandos\n"
+            "  sair                    Encerra a aplicação\n"
+            "----------------------------------\n"
         )
 
     @classmethod
     def run_loop(cls, controller: ElevatorController, running_event: threading.Event) -> None:
-        """Executa o loop interativo da CLI."""
+        """Executa o loop interativo de comando."""
         cls.print_banner()
 
         while running_event.is_set():
             try:
-                # Leitura do comando no terminal
-                sys.stdout.write("elevador-cabine1> ")
+                sys.stdout.write("elevador> ")
                 sys.stdout.flush()
 
                 line = sys.stdin.readline()
                 if not line:
-                    # EOF (Ctrl+D / fim de stream)
                     break
 
                 line = line.strip()
@@ -55,7 +49,7 @@ class Cli:
 
                 if cmd == "andar":
                     if len(tokens) < 2:
-                        print("❌ Uso: andar <0|1|2>")
+                        print("[ERRO] Sintaxe: andar <0|1|2>")
                         continue
 
                     try:
@@ -63,13 +57,13 @@ class Cli:
                         if andar in (0, 1, 2):
                             controller.ir_para_andar(andar)
                         else:
-                            print(f"❌ Andar inválido: '{tokens[1]}'. Escolha entre 0, 1 ou 2.")
+                            print(f"[ERRO] Andar inválido: '{tokens[1]}'. Valores permitidos: 0, 1, 2.")
                     except ValueError:
-                        print(f"❌ Andar inválido: '{tokens[1]}'. Escolha entre 0, 1 ou 2.")
+                        print(f"[ERRO] Andar inválido: '{tokens[1]}'. Valores permitidos: 0, 1, 2.")
 
                 elif cmd == "motor":
                     if len(tokens) < 3:
-                        print("❌ Uso: motor <livre|subir|descer|freio> <duty_0_a_100>")
+                        print("[ERRO] Sintaxe: motor <livre|subir|descer|freio> <duty_0_a_100>")
                         continue
 
                     dir_str = tokens[1].lower()
@@ -81,7 +75,7 @@ class Cli:
                     }
 
                     if dir_str not in direcao_map:
-                        print(f"❌ Direção desconhecida: '{tokens[1]}'. Use livre, subir, descer ou freio.")
+                        print(f"[ERRO] Direção inválida: '{tokens[1]}'. Valores permitidos: livre, subir, descer, freio.")
                         continue
 
                     try:
@@ -89,9 +83,9 @@ class Cli:
                         if 0.0 <= duty <= 100.0:
                             controller.comando_motor(direcao_map[dir_str], duty)
                         else:
-                            print(f"❌ Duty cycle inválido: '{tokens[2]}'. Use um valor entre 0 e 100.")
+                            print(f"[ERRO] Duty cycle fora da faixa [0, 100]: '{tokens[2]}'.")
                     except ValueError:
-                        print(f"❌ Duty cycle inválido: '{tokens[2]}'. Use um valor numérico entre 0 e 100.")
+                        print(f"[ERRO] Duty cycle não numérico: '{tokens[2]}'.")
 
                 elif cmd == "status":
                     controller.print_status()
@@ -103,21 +97,20 @@ class Cli:
                     cls.print_banner()
 
                 elif cmd in ("sair", "exit", "quit"):
-                    print("⏹️ Finalizando sistema por solicitação do usuário...")
+                    print("Encerrando execução...")
                     running_event.clear()
                     break
 
                 else:
-                    print(f"❌ Comando desconhecido: '{cmd}'. Digite 'ajuda' para ver os comandos.")
+                    print(f"[ERRO] Comando não reconhecido: '{cmd}'. Digite 'ajuda' para instruções.")
 
             except (KeyboardInterrupt, EOFError):
                 break
             except Exception as e:
-                print(f"❌ Erro ao processar comando: {e}")
+                print(f"[ERRO] Falha no processamento: {e}")
 
             time.sleep(0.01)
 
-        # Garante a parada imediata e liberação dos recursos
         try:
             controller.parar()
             controller.cleanup()

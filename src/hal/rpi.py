@@ -31,14 +31,14 @@ class RpiHardware(ElevatorHardware):
         self._event_queue: queue.Queue = queue.Queue()
 
         print(
-            f"📌 Pinos BCM configurados: PWM={pins.pwm}, DIR1={pins.dir1}, DIR2={pins.dir2}, "
-            f"ENC_A={pins.enc_a}, ENC_B={pins.enc_b}, CORTINA={pins.cortina}, SENSOR_ANDAR={pins.sensor_andar}"
+            f"[HAL] Pinos BCM: PWM={pins.pwm}, DIR1={pins.dir1}, DIR2={pins.dir2}, "
+            f"ENC_A={pins.enc_a}, ENC_B={pins.enc_b}, CORTINA={pins.cortina}, SENSOR={pins.sensor_andar}"
         )
 
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
 
-        # 1. Configuração dos pinos de saída de direção e PWM
+        # Configuração de saídas digitais e PWM
         GPIO.setup(pins.dir1, GPIO.OUT, initial=GPIO.HIGH)
         GPIO.setup(pins.dir2, GPIO.OUT, initial=GPIO.HIGH)
         GPIO.setup(pins.pwm, GPIO.OUT, initial=GPIO.LOW)
