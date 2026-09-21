@@ -131,7 +131,10 @@ class MotionPlanner:
             else:
                 ratio = float(dist) / float(Fisica.DISTANCIA_DESACELERACAO_MM)
                 target_duty = Fisica.MIN_DUTY_APROXIMACAO + ratio * (Fisica.CRUISE_DUTY - Fisica.MIN_DUTY_APROXIMACAO)
-                duty_atual = max(Fisica.MIN_DUTY_APROXIMACAO, min(duty_atual, target_duty))
+                # Zona de aproximação fina (últimos 60 mm): velocidade rastejante para parada precisa
+                if dist <= 60:
+                    target_duty = min(target_duty, 13.0)
+                duty_atual = max(13.0, min(duty_atual, target_duty))
 
             self.estado.duty_atual = duty_atual
 

@@ -87,13 +87,17 @@ def main() -> None:
 
             pwm = GPIO.PWM(pwm_pin, 1000.0)
 
-            # SUBIR: DIR1=1, DIR2=0
+            # Pulso curto de 0.4s de subida para teste de quadratura
             GPIO.output(dir1_pin, GPIO.HIGH)
             GPIO.output(dir2_pin, GPIO.LOW)
-            pwm.start(60.0)
+            pwm.start(50.0)
+            print("   -> Testando pulso elétrico (subida 0.4s)...")
+            time.sleep(0.4)
 
-            print("   -> Acionado com duty 60% por 3 segundos...")
-            time.sleep(3.0)
+            # Retorno de 0.4s para manter a cabine na cota original
+            GPIO.output(dir1_pin, GPIO.LOW)
+            GPIO.output(dir2_pin, GPIO.HIGH)
+            time.sleep(0.4)
 
             # FREIO: DIR1=1, DIR2=1, PWM=0
             GPIO.output(dir1_pin, GPIO.HIGH)

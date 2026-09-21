@@ -18,6 +18,7 @@ class Cli:
             "\n--- CONTROLE DA CABINE 1 (FSE) ---\n"
             "Comandos disponíveis:\n"
             "  andar <0|1|2> (ou 0, 1, 2)  Desloca para o andar especificado\n"
+            "  homing                      Calibra e zera automaticamente no piso térreo\n"
             "  motor <dir> <duty>          Acionamento direto (livre|subir|descer|freio, 0-100)\n"
             "  status                      Exibe telemetria de sensores e atuadores\n"
             "  zerar [cota_ou_andar]       Redefine a cota de posição de referência\n"
@@ -68,6 +69,9 @@ class Cli:
                             print(f"[ERRO] Andar inválido: '{andar_str}'. Valores permitidos: 0, 1, 2.")
                     except ValueError:
                         print(f"[ERRO] Andar inválido: '{andar_str}'. Valores permitidos: 0, 1, 2.")
+
+                elif cmd == "homing":
+                    controller.executar_homing()
 
                 elif cmd in ("zerar", "calibrar"):
                     pos_calib = 0

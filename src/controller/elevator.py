@@ -1,6 +1,7 @@
 """Módulo de controle de alto nível da Cabine 1."""
 
 import threading
+import time
 from ..config import Fisica, MotorDirection
 from ..hal import ElevatorHardware, HardwareEvent, CortinaEvent, BandeirolaEvent
 from ..sensors.bandeirola import BandeirolaTracker
@@ -101,6 +102,48 @@ class ElevatorController:
         with self._lock:
             self.hardware.set_position(nova_posicao)
             print(f"[CALIBRAÇÃO] Posição redefinida para {nova_posicao} mm.")
+
+    def executar_homing(self) -> None:
+        """Executa procedimento de calibração automática de piso térreo (Andar 0)."""
+        with self._lock:
+            print("\n[HOMING] Iniciando calibração automática no piso térreo...")
+            self.motion.parar()
+            self.hardware.set_motor(MotorDirection.FREIO, 0.0)
+
+        # Se já estiver na bandeirola do Andar 0, apenas zera
+        time.sleep(0.15)
+        with self._lock:
+            pos = self.hardware.get_position()
+            sensor_ativo = self.hardware.is_floor_sensor_active()
+            if sensor_ativo and abs(pos) <= 200:
+                self.hardware.set_position(0)
+                print("[HOMING] Cabine já se encontra na bandeirola do Andar 0. Referência zerada (0 mm).\n")
+                return
+
+        # Desce suavemente até o sensor de andar ativar ou limite de tempo
+        print("[HOMING] Descendo cabine até detectar a bandeirola inferior...")
+        with self._lock:
+            self.hardware.set_motor(MotorDirection.DESCER, 25.0)
+
+        t0 = time.time()
+        achou = False
+        while time.time() - t0 < 12.0:
+            time.sleep(0.02)
+            with self._lock:
+                if self.hardware.is_floor_sensor_active():
+                    achou = True
+                    break
+
+        with self._lock:
+            self.hardware.set_motor(MotorDirection.FREIO, 0.0)
+            self.hardware.set_position(0)
+            self.direcao_atual = MotorDirection.FREIO
+            self.duty_atual = 0.0
+
+        if achou:
+            print("[HOMING] Bandeirola do Andar 0 detectada! Referência zerada com sucesso (0 mm).\n")
+        else:
+            print("[HOMING] Procedimento concluído. Cota atual redefinida para 0 mm.\n")
 
     def print_status(self) -> None:
         """Exibe telemetria atual da cabine."""

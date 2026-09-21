@@ -41,7 +41,37 @@ else:
     from .hal.rpi import RpiHardware, RPI_GPIO_AVAILABLE
 
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+
+def _acquire_instance_lock() -> object:
+    """Garante que apenas uma instância do processo controle os pinos GPIO."""
+    if fcntl is None:
+        return None
+    lock_path = "/tmp/entrega1_fse_cabine1.lock"
+    try:
+        lock_file = open(lock_path, "w")
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_file.write(str(os.getpid()) + "\n")
+        lock_file.flush()
+        return lock_file
+    except (IOError, BlockingIOError):
+        print("\n[ERRO CRÍTICO] Já existe outra instância do controle do elevador em execução!")
+        print("Para evitar conflitos de GPIO e leituras incorretas de encoder:")
+        print("  1. Encerre o processo anterior no outro terminal aberto (Ctrl+C).")
+        print("  2. Ou execute no terminal:")
+        print("     pkill -9 -f 'python.*main.py'\n")
+        sys.exit(1)
+    except Exception:
+        return None
+
+
 def main() -> None:
+    _lock_handle = _acquire_instance_lock()
+
     parser = argparse.ArgumentParser(
         description="Sistema de Controle da Cabine 1 - FSE 2026/2"
     )
@@ -77,26 +107,21 @@ def main() -> None:
 
     # Seleção da camada HAL
     hardware: ElevatorHardware
-    if args.rpi:
-        print("[HAL] Modo Raspberry Pi configurado.")
-        try:
-            hardware = RpiHardware(pin_config)
-        except Exception as e:
-            print(f"[ERRO] Falha ao inicializar periféricos: {e}")
-            sys.exit(1)
-    elif args.mock or not RPI_GPIO_AVAILABLE:
+    if args.mock or (not args.rpi and not RPI_GPIO_AVAILABLE):
         if not args.mock and not RPI_GPIO_AVAILABLE:
             print("[HAL] RPi.GPIO não detectado. Ativando simulação local.")
         else:
             print("[HAL] Modo simulado ativo.")
         hardware = MockHardware()
     else:
-        print("[HAL] Modo Raspberry Pi detectado.")
+        print("[HAL] Modo Raspberry Pi ativo (RPi.GPIO).")
         try:
             hardware = RpiHardware(pin_config)
         except Exception as e:
-            print(f"[ERRO] Falha ao inicializar RPi.GPIO: {e}. Alternando para simulador.")
-            hardware = MockHardware()
+            print(f"\n[ERRO CRÍTICO] Falha ao inicializar periféricos GPIO: {e}")
+            print("Possível processo anterior travado ou pinos ocupados.")
+            print("Execute 'pkill -9 -f main.py' para liberar os recursos.\n")
+            sys.exit(1)
 
     event_queue = hardware.get_event_queue()
     controller = ElevatorController(hardware)
