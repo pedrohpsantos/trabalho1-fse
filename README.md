@@ -95,10 +95,10 @@ pip install -r requirements.txt
 
 ```bash
 # Execução na Bancada 
-python main.py --rpi
+python main.py
 
 # Execução com pinagem do widget ThingsBoard
-python main.py --rpi --widget
+python main.py --widget
 
 # Via Makefile
 make rpi
