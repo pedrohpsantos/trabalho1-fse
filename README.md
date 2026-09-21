@@ -14,7 +14,7 @@ Implementação do módulo de controle da Cabine 1 para modelo reduzido de eleva
 - **Encoder em Quadratura (4x)**: Amostragem por interrupção (`GPIO.BOTH`) nos canais `ENC_A` e `ENC_B`, decodificação por tabela de transição e contador de 32 bits com sinal.
 - **Cortina de Luz**: Entrada digital com filtro de debounce temporal (40 ms) e notificação de eventos de obstrução.
 - **Sensor de Andar (Bandeirola)**: Detecção de transições de entrada e saída, cálculo do centro geométrico e desvio em relação à cota nominal.
-- **Nivelamento**: Tolerância de parada de $\pm 10\text{ mm}$ com corte de PWM e aplicação de freio elétrico.
+- **Nivelamento**: Tolerância de parada de $\pm 5\text{ mm}$ com corte de PWM e aplicação de freio elétrico.
 - **Fim de Curso**: Bloqueio de avanço além da faixa operacional ($0$ a $6000\text{ mm}$).
 - **Parada Segura (`SIGINT`)**: Tratamento de sinal `Ctrl+C` com desaceleração, acionamento do freio e liberação de periféricos (`GPIO.cleanup()`).
 - **Arquitetura Não-Bloqueante**: Ausência de busy-wait, empregando temporizações cooperativas e filas sincronizadas (`queue.Queue`).

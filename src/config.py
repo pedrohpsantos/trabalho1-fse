@@ -69,11 +69,11 @@ class Fisica:
 
     # Limite inferior de duty cycle para compensação de atrito estático
     MIN_DUTY_ARRANQUE: float = 20.0
-    MIN_DUTY_APROXIMACAO: float = 20.0
+    MIN_DUTY_APROXIMACAO: float = 15.0
     CRUISE_DUTY: float = 60.0
 
     # Tolerância de nivelamento no andar alvo (mm)
-    TOLERANCIA_NIVELAMENTO_MM: int = 10
+    TOLERANCIA_NIVELAMENTO_MM: int = 5
 
     # Distância para início da desaceleração controlada (mm)
     DISTANCIA_DESACELERACAO_MM: int = 400

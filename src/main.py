@@ -117,9 +117,9 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, sigint_handler)
 
-    # Thread da Malha de Controle periódica (50 ms / 20 Hz, sem busy-wait)
+    # Thread da Malha de Controle periódica (20 ms / 50 Hz, sem busy-wait)
     def control_loop() -> None:
-        tick_interval = 0.05  # 50 ms
+        tick_interval = 0.02  # 20 ms
         while running_event.is_set():
             try:
                 controller.tick()
