@@ -2,7 +2,6 @@
 
 import queue
 import threading
-from typing import Optional
 
 from .base import ElevatorHardware, CortinaEvent, BandeirolaEvent, QUADRATURE_TABLE
 from ..config import PinConfig, MotorDirection, Fisica

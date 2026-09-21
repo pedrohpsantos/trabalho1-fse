@@ -3,7 +3,6 @@
 import queue
 import threading
 import time
-from typing import Optional
 
 from .base import ElevatorHardware, HardwareEvent, CortinaEvent, BandeirolaEvent
 from ..config import MotorDirection, Fisica

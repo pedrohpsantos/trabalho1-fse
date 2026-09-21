@@ -1,7 +1,6 @@
 """Módulo de controle de alto nível da Cabine 1."""
 
 import threading
-from typing import Optional
 from ..config import Fisica, MotorDirection
 from ..hal import ElevatorHardware, HardwareEvent, CortinaEvent, BandeirolaEvent
 from ..sensors.bandeirola import BandeirolaTracker

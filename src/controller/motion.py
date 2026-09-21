@@ -1,7 +1,7 @@
 """Planejador de trajetória e cálculo de perfis de velocidade da cabine."""
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Union
 
 from ..config import Fisica, MotorDirection
 
@@ -24,11 +24,7 @@ class LimiteCursoAtingidoUpdate:
     posicao: int
 
 
-class InalteradoUpdate:
-    pass
-
-
-MotionUpdate = Union[ContinuarUpdate, ChegouAoAndarUpdate, LimiteCursoAtingidoUpdate, InalteradoUpdate]
+MotionUpdate = Union[ContinuarUpdate, ChegouAoAndarUpdate, LimiteCursoAtingidoUpdate]
 
 
 @dataclass
@@ -143,5 +139,3 @@ class MotionPlanner:
                 direcao=direcao,
                 duty_percent=duty_atual,
             )
-
-        return InalteradoUpdate()

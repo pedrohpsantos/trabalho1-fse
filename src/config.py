@@ -62,10 +62,6 @@ class MotorDirection(Enum):
             return (True, True)
         return (False, False)
 
-    @property
-    def as_str(self) -> str:
-        return self.value
-
 
 class Fisica:
     """Parâmetros físicos e limites cinemáticos da cabine."""
@@ -75,9 +71,6 @@ class Fisica:
     MIN_DUTY_ARRANQUE: float = 20.0
     MIN_DUTY_APROXIMACAO: float = 20.0
     CRUISE_DUTY: float = 60.0
-
-    # Relação de pulsos do encoder (1000 pulsos = 1 metro)
-    PULSOS_POR_METRO: int = 1000
 
     # Tolerância de nivelamento no andar alvo (mm)
     TOLERANCIA_NIVELAMENTO_MM: int = 10

@@ -21,7 +21,7 @@ from src.controller.motion import (
 )
 from src.sensors.bandeirola import BandeirolaTracker
 from src.hal.mock import MockHardware
-from src.hal.base import CortinaEvent, BandeirolaEvent, QUADRATURE_TABLE
+from src.hal.base import CortinaEvent, QUADRATURE_TABLE
 
 
 class TestBandeirolaTracker(unittest.TestCase):
