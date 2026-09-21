@@ -17,6 +17,7 @@ class ChegouAoAndarUpdate:
     andar: int
     posicao: int
     erro_nivelamento: int
+    pos_alvo: int = 0
 
 
 @dataclass
@@ -86,10 +87,10 @@ class MotionPlanner:
             duty = self.estado.duty
 
             # Proteção de fim de curso em modo manual
-            if dir_atual == MotorDirection.SUBIR and pos_atual >= Fisica.POS_MAXIMA_MM:
+            if dir_atual == MotorDirection.SUBIR and pos_atual >= (Fisica.POS_MAXIMA_MM + 50):
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
-            if dir_atual == MotorDirection.DESCER and pos_atual <= Fisica.POS_MINIMA_MM:
+            if dir_atual == MotorDirection.DESCER and pos_atual <= (Fisica.POS_MINIMA_MM - 50):
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
 
@@ -104,23 +105,25 @@ class MotionPlanner:
             erro = alvo - pos_atual
             dist = abs(erro)
 
-            # Parada por tolerância de nivelamento (+-10 mm)
-            if dist <= Fisica.TOLERANCIA_NIVELAMENTO_MM:
+            # Parada de alta precisão: freio elétrico ao atingir a zona fina (<= 2 mm)
+            # A frenagem dinâmica a 13% de duty consome a inércia restante (~2 mm) parando no alvo exato (+-1 mm).
+            if dist <= 2:
                 self.estado = EstadoParado()
                 return ChegouAoAndarUpdate(
                     andar=andar,
                     posicao=pos_atual,
                     erro_nivelamento=erro,
+                    pos_alvo=alvo,
                 )
 
             # Sentido de movimentação
             direcao = MotorDirection.SUBIR if erro > 0 else MotorDirection.DESCER
 
-            # Verificação de fim de curso
-            if direcao == MotorDirection.SUBIR and pos_atual >= Fisica.POS_MAXIMA_MM:
+            # Verificação de fim de curso (com margem de segurança de 50 mm além dos pisos)
+            if direcao == MotorDirection.SUBIR and pos_atual >= (Fisica.POS_MAXIMA_MM + 50):
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
-            if direcao == MotorDirection.DESCER and pos_atual <= Fisica.POS_MINIMA_MM:
+            if direcao == MotorDirection.DESCER and pos_atual <= (Fisica.POS_MINIMA_MM - 50):
                 self.estado = EstadoParado()
                 return LimiteCursoAtingidoUpdate(posicao=pos_atual)
 

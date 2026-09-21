@@ -80,12 +80,19 @@ class TestMotionPlanner(unittest.TestCase):
         self.assertEqual(update.direcao, MotorDirection.SUBIR)
         self.assertLess(update.duty_percent, Fisica.CRUISE_DUTY)
 
-        # Na tolerância de nivelamento (ex: 2995 mm, erro de 5 mm <= 10 mm): deve parar e frear
-        update = planner.update(2995)
+        # Na aproximação fina (ex: 2990 mm): rasteja a 13% para parada suave
+        update = planner.update(2990)
+        self.assertIsInstance(update, ContinuarUpdate)
+        self.assertEqual(update.direcao, MotorDirection.SUBIR)
+        self.assertEqual(update.duty_percent, 13.0)
+
+        # Na zona de parada de alta precisão (ex: 2999 mm, dist <= 2 mm): aciona freio elétrico
+        update = planner.update(2999)
         self.assertIsInstance(update, ChegouAoAndarUpdate)
         self.assertEqual(update.andar, 1)
-        self.assertEqual(update.posicao, 2995)
-        self.assertEqual(update.erro_nivelamento, 5)
+        self.assertEqual(update.posicao, 2999)
+        self.assertEqual(update.erro_nivelamento, 1)
+        self.assertEqual(update.pos_alvo, 3000)
 
         self.assertIsInstance(planner.estado, EstadoParado)
 
@@ -99,10 +106,10 @@ class TestMotionPlanner(unittest.TestCase):
         update = planner.update(5900)
         self.assertIsInstance(update, ContinuarUpdate)
 
-        # Em 6050 mm: limite de curso atingido
-        update = planner.update(6050)
+        # Em 6060 mm (> POS_MAXIMA_MM + 50): limite de curso atingido
+        update = planner.update(6060)
         self.assertIsInstance(update, LimiteCursoAtingidoUpdate)
-        self.assertEqual(update.posicao, 6050)
+        self.assertEqual(update.posicao, 6060)
         self.assertIsInstance(planner.estado, EstadoParado)
 
         # Movimento manual para descer abaixo de 0 mm
@@ -110,9 +117,10 @@ class TestMotionPlanner(unittest.TestCase):
         update = planner.update(100)
         self.assertIsInstance(update, ContinuarUpdate)
 
-        update = planner.update(-10)
+        # Em -60 mm (< POS_MINIMA_MM - 50): limite de curso atingido
+        update = planner.update(-60)
         self.assertIsInstance(update, LimiteCursoAtingidoUpdate)
-        self.assertEqual(update.posicao, -10)
+        self.assertEqual(update.posicao, -60)
         self.assertIsInstance(planner.estado, EstadoParado)
 
 

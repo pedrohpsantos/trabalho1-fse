@@ -39,9 +39,13 @@ class ElevatorController:
                 self.direcao_atual = MotorDirection.FREIO
                 self.duty_atual = 0.0
                 self.hardware.set_motor(MotorDirection.FREIO, 0.0)
+                time.sleep(0.25)
+                pos_final = self.hardware.get_position()
+                alvo = update.pos_alvo if update.pos_alvo != 0 or update.andar == 0 else update.posicao
+                erro_final = pos_final - alvo
                 print(
                     f"\n[CHEGADA] Cabine nivelada no Andar {update.andar}. "
-                    f"Posição: {update.posicao} mm (erro: {update.erro_nivelamento:+d} mm)\n"
+                    f"Posição: {pos_final} mm (erro: {erro_final:+d} mm)\n"
                 )
 
             elif isinstance(update, LimiteCursoAtingidoUpdate):
@@ -79,6 +83,15 @@ class ElevatorController:
             raise ValueError(f"Andar inválido: {andar}.")
 
         with self._lock:
+            pos_atual = self.hardware.get_position()
+            dist = abs(pos_alvo - pos_atual)
+            if dist <= Fisica.TOLERANCIA_NIVELAMENTO_MM:
+                print(
+                    f"\n[COMANDO] Cabine já se encontra no Andar {andar} "
+                    f"(posição: {pos_atual} mm, erro: {pos_atual - pos_alvo:+d} mm).\n"
+                )
+                return
+
             print(f"[COMANDO] Deslocamento para o Andar {andar} (alvo: {pos_alvo} mm)")
             self.motion.comandar_andar(andar, pos_alvo)
 
