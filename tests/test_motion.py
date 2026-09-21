@@ -189,6 +189,10 @@ class TestConfigEHardware(unittest.TestCase):
         self.assertIsInstance(event, CortinaEvent)
         self.assertTrue(event.obstruida)
 
+        # Teste de redefinição de cota
+        mock.set_position(3000)
+        self.assertEqual(mock.get_position(), 3000)
+
         mock.cleanup()
 
 

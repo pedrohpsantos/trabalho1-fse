@@ -96,6 +96,12 @@ class ElevatorController:
             self.duty_atual = 0.0
             self.hardware.set_motor(MotorDirection.FREIO, 0.0)
 
+    def recalibrar_posicao(self, nova_posicao: int = 0) -> None:
+        """Redefine a cota de posição de referência acumulada."""
+        with self._lock:
+            self.hardware.set_position(nova_posicao)
+            print(f"[CALIBRAÇÃO] Posição redefinida para {nova_posicao} mm.")
+
     def print_status(self) -> None:
         """Exibe telemetria atual da cabine."""
         with self._lock:

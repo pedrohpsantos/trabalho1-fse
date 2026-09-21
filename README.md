@@ -142,17 +142,19 @@ make test
 ```
 --- CONTROLE DA CABINE 1 (FSE) ---
 Comandos disponíveis:
-  andar <0|1|2>           Desloca para o andar especificado
-  motor <dir> <duty>      Acionamento direto (livre|subir|descer|freio, 0-100)
-  status                  Exibe telemetria de sensores e atuadores
-  parar                   Interrompe movimento e aciona freio
-  ajuda                   Exibe lista de comandos
-  sair                    Encerra a aplicação
+  andar <0|1|2> (ou 0, 1, 2)  Desloca para o andar especificado
+  motor <dir> <duty>          Acionamento direto (livre|subir|descer|freio, 0-100)
+  status                      Exibe telemetria de sensores e atuadores
+  zerar [cota_ou_andar]       Redefine a cota de posição de referência
+  parar                       Interrompe movimento e aciona freio
+  ajuda                       Exibe lista de comandos
+  sair                        Encerra a aplicação
 ----------------------------------
 ```
 
 Exemplos de uso:
-- `andar 1`
+- `andar 1` (ou apenas `1`)
+- `zerar` ou `zerar 0`
 - `motor subir 40`
 - `status`
 - `parar`

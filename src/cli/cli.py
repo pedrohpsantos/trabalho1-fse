@@ -17,12 +17,13 @@ class Cli:
         print(
             "\n--- CONTROLE DA CABINE 1 (FSE) ---\n"
             "Comandos disponíveis:\n"
-            "  andar <0|1|2>           Desloca para o andar especificado\n"
-            "  motor <dir> <duty>      Acionamento direto (livre|subir|descer|freio, 0-100)\n"
-            "  status                  Exibe telemetria de sensores e atuadores\n"
-            "  parar                   Interrompe movimento e aciona freio\n"
-            "  ajuda                   Exibe lista de comandos\n"
-            "  sair                    Encerra a aplicação\n"
+            "  andar <0|1|2> (ou 0, 1, 2)  Desloca para o andar especificado\n"
+            "  motor <dir> <duty>          Acionamento direto (livre|subir|descer|freio, 0-100)\n"
+            "  status                      Exibe telemetria de sensores e atuadores\n"
+            "  zerar [cota_ou_andar]       Redefine a cota de posição de referência\n"
+            "  parar                       Interrompe movimento e aciona freio\n"
+            "  ajuda                       Exibe lista de comandos\n"
+            "  sair                        Encerra a aplicação\n"
             "----------------------------------\n"
         )
 
@@ -47,19 +48,40 @@ class Cli:
                 tokens: List[str] = line.split()
                 cmd = tokens[0].lower()
 
-                if cmd == "andar":
-                    if len(tokens) < 2:
-                        print("[ERRO] Sintaxe: andar <0|1|2>")
-                        continue
+                if cmd in ("0", "1", "2"):
+                    controller.ir_para_andar(int(cmd))
+
+                elif cmd in ("andar", "ir") or (cmd.startswith("andar") and len(cmd) > 5 and cmd[5:] in ("0", "1", "2")):
+                    if cmd in ("andar", "ir"):
+                        if len(tokens) < 2:
+                            print("[ERRO] Sintaxe: andar <0|1|2>")
+                            continue
+                        andar_str = tokens[1]
+                    else:
+                        andar_str = cmd[5:]
 
                     try:
-                        andar = int(tokens[1])
+                        andar = int(andar_str)
                         if andar in (0, 1, 2):
                             controller.ir_para_andar(andar)
                         else:
-                            print(f"[ERRO] Andar inválido: '{tokens[1]}'. Valores permitidos: 0, 1, 2.")
+                            print(f"[ERRO] Andar inválido: '{andar_str}'. Valores permitidos: 0, 1, 2.")
                     except ValueError:
-                        print(f"[ERRO] Andar inválido: '{tokens[1]}'. Valores permitidos: 0, 1, 2.")
+                        print(f"[ERRO] Andar inválido: '{andar_str}'. Valores permitidos: 0, 1, 2.")
+
+                elif cmd in ("zerar", "calibrar"):
+                    pos_calib = 0
+                    if len(tokens) >= 2:
+                        try:
+                            val = int(tokens[1])
+                            if val in (0, 1, 2):
+                                pos_calib = val * 3000
+                            else:
+                                pos_calib = val
+                        except ValueError:
+                            print(f"[ERRO] Valor de calibração inválido: '{tokens[1]}'.")
+                            continue
+                    controller.recalibrar_posicao(pos_calib)
 
                 elif cmd == "motor":
                     if len(tokens) < 3:

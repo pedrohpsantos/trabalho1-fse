@@ -138,6 +138,10 @@ class RpiHardware(ElevatorHardware):
         with self._lock:
             return self._posicao
 
+    def set_position(self, position: int) -> None:
+        with self._lock:
+            self._posicao = int(position)
+
     def is_curtain_obstructed(self) -> bool:
         return bool(GPIO.input(self.pins.cortina))
 

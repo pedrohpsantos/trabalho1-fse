@@ -45,6 +45,11 @@ class ElevatorHardware(ABC):
         pass
 
     @abstractmethod
+    def set_position(self, position: int) -> None:
+        """Redefine a cota de posição acumulada (em pulsos / mm)."""
+        pass
+
+    @abstractmethod
     def is_curtain_obstructed(self) -> bool:
         """Verifica se a cortina de luz está obstruída atualmente."""
         pass
