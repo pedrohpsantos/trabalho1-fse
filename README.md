@@ -34,7 +34,7 @@ Implementação do módulo de controle da Cabine 1 para modelo reduzido de eleva
 | `SENSOR_ANDAR` | Sensor de andar (bandeirola) | **0** | Entrada | Interrupção (ambas as bordas) |
 
 > **Presets de Execução**:
-> - Padrão (**Bancada 36**): `PWM=13, DIR1=22, DIR2=23, ENC=20/21, CORTINA=26, SENSOR=0`.
+> - Padrão (**Bancada**): `PWM=13, DIR1=22, DIR2=23, ENC=20/21, CORTINA=26, SENSOR=0`.
 > - **Widget Alternativo**: Se a bancada estiver usando a configuração alternativa do ThingsBoard (`DIR1=17, DIR2=27, SENSOR=11`), execute com `--widget` ou `--bancada`.
 
 ### Tabela de Direção do Motor
@@ -94,7 +94,7 @@ pip install -r requirements.txt
 ### 4.2 Execução na Raspberry Pi (Hardware Real)
 
 ```bash
-# Execução na Bancada 36 (padrão)
+# Execução na Bancada 
 python main.py --rpi
 
 # Execução com pinagem do widget ThingsBoard

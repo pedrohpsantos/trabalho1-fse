@@ -72,7 +72,7 @@ def main() -> None:
         print("[CONFIG] Preset: Widget alternativo (DIR1=17, DIR2=27, SENSOR=11)")
         pin_config = PinConfig.widget_bancada()
     else:
-        print("[CONFIG] Preset: Bancada 36 (PWM=13, DIR1=22, DIR2=23, SENSOR=0)")
+        print("[CONFIG] Preset: Bancada (PWM=13, DIR1=22, DIR2=23, SENSOR=0)")
         pin_config = PinConfig.tabela_oficial()
 
     # Seleção da camada HAL

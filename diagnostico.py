@@ -20,7 +20,7 @@ def main() -> None:
     # 1. Leitura do estado atual dos pinos de entrada candidatos
     print("Estado atual dos pinos de entrada candidatos:")
     input_pins = [
-        (0, "SENSOR_ANDAR (Cabine 1 - Tabela / Bancada 36)"),
+        (0, "SENSOR_ANDAR (Cabine 1 - Tabela / Bancada)"),
         (11, "SENSOR_ANDAR (Cabine 1 - Widget)"),
         (12, "SENSOR_ANDAR (Cabine 2)"),
         (1, "SENSOR_ANDAR (Cabine 3)"),
@@ -69,7 +69,7 @@ def main() -> None:
 
     # 3. Testa combinações de acionamento do motor
     configs = [
-        ("Config A (Tabela Oficial / Bancada 36): PWM=13, DIR1=22, DIR2=23", 13, 22, 23),
+        ("Config A (Tabela Oficial / Bancada): PWM=13, DIR1=22, DIR2=23", 13, 22, 23),
         ("Config B (Widget Bancada Cab 1):        PWM=13, DIR1=17, DIR2=27", 13, 17, 27),
         ("Config C (Cabine 2):                    PWM=11, DIR1=17, DIR2=27", 11, 17, 27),
         ("Config D (Pinos invertidos):            PWM=11, DIR1=22, DIR2=23", 11, 22, 23),

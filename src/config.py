@@ -18,7 +18,7 @@ class PinConfig:
 
     @classmethod
     def tabela_oficial(cls) -> "PinConfig":
-        """Configuração nominal da bancada física (Bancada 36)."""
+        """Configuração nominal da bancada física (Bancada)."""
         return cls(
             pwm=13,
             dir1=22,
