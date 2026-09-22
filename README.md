@@ -1,7 +1,9 @@
 # Controle de Cabine de Elevador — Módulo GPIO (Python)
 
-Trabalho 1 — Entrega 1 | Fundamentos de Sistemas Embarcados (2026/2)  
+Entrega 1 | Fundamentos de Sistemas Embarcados (2026/2)  
 Faculdade do Gama — Universidade de Brasília (FGA-UnB)
+
+*Vídeo de apresentação*: https://youtu.be/1TL6987Bgqs?is=uhtylnDGjsFw261M
 
 ---
 
