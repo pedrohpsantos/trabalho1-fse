@@ -1,165 +1,200 @@
-# Controle de Cabine de Elevador — Módulo GPIO (Python)
+# Sistema de Controle e Comunicação de Elevadores
 
-Entrega 1 | Fundamentos de Sistemas Embarcados (2026/2)  
-Faculdade do Gama — Universidade de Brasília (FGA-UnB)
+Repositório das entregas do trabalho de **Fundamentos de Sistemas Embarcados (2026/2)**, da Faculdade do Gama (FGA/UnB). O projeto evolui de um controlador local de cabine, executado em Raspberry Pi, para uma camada de comunicação UART com uma ESP32 que simula o edifício de elevadores.
 
-*Vídeo de apresentação*: https://youtu.be/1TL6987Bgqs?is=uhtylnDGjsFw261M
+## Visão geral
 
----
+O repositório está organizado em duas entregas independentes e complementares:
 
-## 1. Descrição do Sistema
+- **[Entrega 1](./entrega1/README.md)** — controle da Cabine 1 por GPIO, com acionamento do motor, PWM, encoder em quadratura, sensores, nivelamento, limites de segurança e modo simulado.
+- **[Entrega 2](./entrega2/README.md)** — comunicação serial UART entre Raspberry Pi e ESP32, com protocolo simplificado, wrapper MODBUS modificado, CRC-16 e acesso aos registradores do simulador de elevadores.
 
-Implementação do módulo de controle da Cabine 1 para modelo reduzido de elevador de 3 andares (0, 1 e 2). O sistema gerencia o acionamento de potência, leitura de sensores e posicionamento em malha fechada via Raspberry Pi:
+As documentações específicas apresentam o detalhamento de hardware, protocolos, arquitetura, comandos da CLI, exemplos de tráfego e testes de cada etapa.
 
-- **Controle de Tração (Ponte H)**: Sinais digitais `DIR1` e `DIR2` para os estados Livre, Subir, Descer e Freio.
-- **Modulação PWM**: Frequência de 1 kHz para controle de velocidade com rampa e piso de partida ($\ge 20\%$) para compensação de atrito estático.
-- **Encoder em Quadratura (4x)**: Amostragem por interrupção (`GPIO.BOTH`) nos canais `ENC_A` e `ENC_B`, decodificação por tabela de transição e contador de 32 bits com sinal.
-- **Cortina de Luz**: Entrada digital com filtro de debounce temporal (40 ms) e notificação de eventos de obstrução.
-- **Sensor de Andar (Bandeirola)**: Detecção de transições de entrada e saída, cálculo do centro geométrico e desvio em relação à cota nominal.
-- **Nivelamento**: Tolerância de parada de $\pm 5\text{ mm}$ com corte de PWM e aplicação de freio elétrico.
-- **Fim de Curso**: Bloqueio de avanço além da faixa operacional ($0$ a $6000\text{ mm}$).
-- **Parada Segura (`SIGINT`)**: Tratamento de sinal `Ctrl+C` com desaceleração, acionamento do freio e liberação de periféricos (`GPIO.cleanup()`).
-- **Arquitetura Não-Bloqueante**: Ausência de busy-wait, empregando temporizações cooperativas e filas sincronizadas (`queue.Queue`).
+## Estrutura do repositório
 
----
-
-## 2. Mapeamento de Pinos da Cabine 1 (Raspberry Pi — BCM)
-
-| Sinal | Função | GPIO RPi (BCM) | Direção | Modalidade |
-|:---|:---|:---:|:---:|:---|
-| `PWM` | Potência do motor de tração (1 kHz) | **13** | Saída | PWM (0–100%) |
-| `DIR1` | Direção 1 | **22** | Saída | Digital on/off |
-| `DIR2` | Direção 2 | **23** | Saída | Digital on/off |
-| `ENC_A` | Canal A do Encoder | **20** | Entrada | Interrupção (ambas as bordas) |
-| `ENC_B` | Canal B do Encoder | **21** | Entrada | Interrupção (ambas as bordas) |
-| `CORTINA` | Cortina de luz da porta | **26** | Entrada | Digital on/off (debounce 40ms) |
-| `SENSOR_ANDAR` | Sensor de andar (bandeirola) | **0** | Entrada | Interrupção (ambas as bordas) |
-
-> **Presets de Execução**:
-> - Padrão (**Bancada**): `PWM=13, DIR1=22, DIR2=23, ENC=20/21, CORTINA=26, SENSOR=0`.
-> - **Widget Alternativo**: Se a bancada estiver usando a configuração alternativa do ThingsBoard (`DIR1=17, DIR2=27, SENSOR=11`), execute com `--widget` ou `--bancada`.
-
-### Tabela de Direção do Motor
-
-| Ação | `DIR1` (GPIO 22) | `DIR2` (GPIO 23) |
-|:---|:---:|:---:|
-| **Livre** | 0 | 0 |
-| **Subir** | 1 | 0 |
-| **Descer** | 0 | 1 |
-| **Freio** | 1 | 1 |
-
----
-
-## 3. Arquitetura de Software
-
-```
-entrega1_python/
-├── Makefile                     # Alvos de automação (execução, testes e diagnóstico)
-├── README.md                    # Documentação do projeto
-├── requirements.txt             # Dependências de execução e teste (RPi.GPIO, pytest)
-├── main.py                      # Ponto de entrada raiz
-├── diagnostico.py               # Utilitário de validação elétrica de pinos
-├── tests/
-│   ├── __init__.py
-│   └── test_motion.py           # Testes unitários (cinemática, limites e quadratura)
-└── src/
-    ├── __init__.py              # Inicialização do pacote
-    ├── main.py                  # Ponto de entrada interno e orquestração de threads
-    ├── config.py                # Mapeamento de hardware e parâmetros físicos
-    ├── hal/                     # Camada de Abstração de Hardware
-    │   ├── __init__.py
-    │   ├── base.py              # Interface abstrata e tabela de quadratura 4x
-    │   ├── mock.py              # Driver simulador com cinemática local
-    │   └── rpi.py               # Driver de hardware para Raspberry Pi (RPi.GPIO)
-    ├── sensors/                 # Tratamento de sinais dos sensores
-    │   ├── __init__.py
-    │   └── bandeirola.py        # Processamento de bordas e cálculo de centro
-    ├── controller/              # Lógica de controle e cinemática
-    │   ├── __init__.py
-    │   ├── elevator.py          # Máquina de estados e sincronização de eventos
-    │   └── motion.py            # Planejador de trajetórias e rampas de aceleração
-    └── cli/                     # Interface de terminal
-        ├── __init__.py
-        └── cli.py               # Interpretador de comandos
+```text
+.
+├── entrega1/
+│   ├── main.py
+│   ├── diagnostico.py
+│   ├── src/
+│   │   ├── cli/          # Interface de linha de comando
+│   │   ├── controller/   # Máquina de estados e movimento
+│   │   ├── hal/          # Abstração de hardware, mock e Raspberry Pi
+│   │   └── sensors/      # Tratamento dos sensores
+│   ├── tests/
+│   └── README.md
+└── entrega2/
+    ├── main.py
+    ├── src/
+    │   ├── config.py
+    │   ├── crc.py
+    │   ├── uart_driver.py
+    │   ├── parte1_simplificado.py
+    │   ├── parte2_modbus_p2.py
+    │   └── parte3_simulador.py
+    ├── tests/
+    └── README.md
 ```
 
----
+## Requisitos gerais
 
-## 4. Instruções de Instalação e Execução
+- Python 3
+- Para execução em hardware: Raspberry Pi e os periféricos descritos na documentação da entrega correspondente
+- Para a Entrega 2 em hardware: Raspberry Pi conectada à ESP32 por UART, com GND comum
+- Para desenvolvimento local: os modos `--mock` permitem executar os projetos sem a bancada
 
-### 4.1 Instalação de Dependências
+Cada entrega possui seu próprio `requirements.txt`; as dependências devem ser instaladas a partir da pasta do projeto que será executado.
+
+## Instalação
+
+É recomendado utilizar um ambiente virtual separado para cada entrega:
 
 ```bash
-pip install -r requirements.txt
+cd entrega1
+python -m venv venv
 ```
 
-### 4.2 Execução na Raspberry Pi (Hardware Real)
+No Windows:
 
-```bash
-# Execução na Bancada 
-python main.py
-
-# Execução com pinagem do widget ThingsBoard
-python main.py --widget
-
-# Via Makefile
-make rpi
+```powershell
+venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-### 4.3 Diagnóstico de Pinos GPIO
-
-Para verificação do estado elétrico dos pinos antes da operação:
+No Linux ou Raspberry Pi:
 
 ```bash
-python diagnostico.py
-
-# Via Makefile
-make diagnostico
+source venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-### 4.4 Execução em Modo Simulado (Sem Hardware Real)
+Para instalar as dependências da segunda entrega, repita o procedimento em `entrega2`.
 
-Detectado automaticamente em ambiente sem suporte a `RPi.GPIO`:
+## Execução rápida em modo simulado
+
+### Entrega 1 — controle da cabine
 
 ```bash
+cd entrega1
 python main.py --mock
+```
 
-# Ou via Makefile
+Alternativamente:
+
+```bash
 make run
 ```
 
-### 4.5 Execução dos Testes Automatizados
+### Entrega 2 — comunicação UART simulada
 
 ```bash
-pytest tests -v
-
-# Via Makefile
-make test
+cd entrega2
+python main.py --mock
 ```
 
----
+Alternativamente:
 
-## 5. Interface de Linha de Comando (CLI)
-
-```
---- CONTROLE DA CABINE 1 (FSE) ---
-Comandos disponíveis:
-  andar <0|1|2> (ou 0, 1, 2)  Desloca para o andar especificado
-  homing                      Calibra e zera automaticamente no piso térreo
-  motor <dir> <duty>          Acionamento direto (livre|subir|descer|freio, 0-100)
-  status                      Exibe telemetria de sensores e atuadores
-  zerar [cota_ou_andar]       Redefine a cota de posição de referência
-  parar                       Interrompe movimento e aciona freio
-  ajuda                       Exibe lista de comandos
-  sair                        Encerra a aplicação
-----------------------------------
+```bash
+make run
 ```
 
-Exemplos de uso:
-- `andar 1` (ou apenas `1`)
-- `homing`
-- `zerar` ou `zerar 0`
-- `motor subir 40`
-- `status`
-- `parar`
-- `sair`
+O modo simulado é indicado para desenvolvimento, testes e demonstrações sem acesso à Raspberry Pi, GPIO ou ESP32.
+
+## Execução em hardware
+
+### Entrega 1
+
+Na Raspberry Pi, com a pinagem da bancada configurada:
+
+```bash
+cd entrega1
+python main.py
+```
+
+Para a configuração alternativa do widget ThingsBoard:
+
+```bash
+python main.py --widget
+```
+
+Antes da operação, o estado elétrico dos pinos pode ser verificado com:
+
+```bash
+python diagnostico.py
+```
+
+### Entrega 2
+
+Com a Raspberry Pi conectada à ESP32 pela UART:
+
+```bash
+cd entrega2
+python main.py /dev/serial0
+```
+
+A porta, o timeout e a matrícula podem ser configurados conforme descrito em [Configuração da Entrega 2](./entrega2/README.md).
+
+## Testes e qualidade
+
+Os testes devem ser executados dentro da pasta de cada entrega:
+
+```bash
+cd entrega1
+python -m pytest tests -v
+```
+
+```bash
+cd entrega2
+python -m pytest -v
+```
+
+A Entrega 2 também disponibiliza verificações com Ruff:
+
+```bash
+cd entrega2
+make lint
+make format
+```
+
+Os alvos disponíveis em cada `Makefile` incluem instalação, execução simulada, execução em hardware, testes e limpeza de caches.
+
+## Funcionalidades principais
+
+### Controle local da cabine
+
+- Controle de tração por ponte H nos estados livre, subir, descer e freio
+- PWM de 1 kHz com rampa de velocidade
+- Leitura de encoder em quadratura 4x
+- Debounce da cortina de luz
+- Detecção de bandeirola e cálculo do centro do andar
+- Nivelamento com tolerância de ±5 mm
+- Fim de curso entre 0 e 6000 mm
+- Parada segura em `SIGINT`
+- Driver mock para testes sem hardware
+
+### Comunicação com o simulador
+
+- Protocolo simplificado com seis comandos de solicitação e envio
+- Wrapper MODBUS modificado com funções `0x23` e `0x16`
+- CRC-16 e validação de quadros
+- Primitivas MODBUS `0x03` e `0x10`
+- Leitura de estado das três cabines e do controlador do prédio
+- Escrita das condições ambientais de temperatura e pressão
+- Retentativas para timeout e CRC
+- Tratamento das exceções MODBUS `0x01`, `0x02` e `0x03`
+- Monitoramento contínuo e simulador UART offline
+
+## Documentação detalhada
+
+- [README da Entrega 1 — Controle GPIO](./entrega1/README.md)
+- [README da Entrega 2 — UART e MODBUS](./entrega2/README.md)
+
+Os READMEs das entregas devem ser consultados antes da ligação do hardware, pois contêm os mapas de pinos, parâmetros de comunicação, formatos de pacotes e procedimentos específicos de diagnóstico.
+
+## Contexto acadêmico
+
+Disciplina: **Fundamentos de Sistemas Embarcados**  
+Período: **2026/2**  
+Instituição: **Faculdade do Gama — Universidade de Brasília (FGA/UnB)**
