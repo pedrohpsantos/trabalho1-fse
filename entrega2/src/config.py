@@ -3,9 +3,10 @@
 Centraliza a matrícula de 6 dígitos, parâmetros da UART e constantes de protocolo.
 """
 
-# Matrícula padrão: 6 últimos dígitos numéricos da matrícula do estudante.
-# Cada dígito DEVE ser um inteiro de 0 a 9, transmitido como byte bruto (ex: 0x06, não '6'/0x36).
-MATRICULA_PADRAO: list[int] = [6, 5, 4, 3, 2, 1]
+# Matrícula padrão: 6 últimos dígitos numéricos da matrícula do estudante (Pedro Henrique: 232038442).
+# Cada dígito DEVE ser um inteiro de 0 a 9, transmitido como byte bruto (ex: 0x00, 0x03, 0x08...).
+MATRICULA_PADRAO: list[int] = [0, 3, 8, 4, 4, 2]
+
 
 # Parâmetros padrão da UART
 UART_PORTA_PADRAO: str = "/dev/serial0"

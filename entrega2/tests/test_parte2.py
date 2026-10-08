@@ -108,6 +108,14 @@ def test_resposta_excecao_modbus(protocolo, fake_driver):
         protocolo.solicita_inteiro()
 
 
+def test_resposta_com_endereco_zero_do_bridge_uart(protocolo, fake_driver):
+    """A ESP32 da bancada devolve 0x00 como endereço do wrapper P2."""
+    fake_driver.resposta_injetada = anexar_crc16(
+        bytes([0x00, 0x23, 0xA1]) + struct.pack("<i", 1234)
+    )
+    assert protocolo.solicita_inteiro() == 1234
+
+
 def test_timeout_modbus(protocolo, fake_driver):
     """Garante lançamento de TimeoutError quando não há resposta."""
     fake_driver.simular_timeout = True

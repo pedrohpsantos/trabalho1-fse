@@ -66,8 +66,8 @@ class ProtocoloSimplificado:
                 f"Tamanho de string inconsistente no comando 0xA3: declarado {tam} B, recebido {len(resp) - 1} B"
             )
 
-        texto = resp[1 : 1 + tam].decode("utf-8", errors="replace")
-        print(f"-> [Parte 1 - 0xA3] String recebida ({tam} B): '{texto}'")
+        texto = resp[1 : 1 + tam].decode("utf-8", errors="replace").rstrip("\x00")
+        print(f"-> [Parte 1 - 0xA3] String recebida ({len(texto)} chars / {tam} B declarados): '{texto}'")
         return texto
 
     def envia_inteiro(self, valor: int) -> int:
@@ -82,7 +82,11 @@ class ProtocoloSimplificado:
             )
 
         val = struct.unpack("<i", resp)[0]
-        print(f"-> [Parte 1 - 0xB1] Eco inteiro processado: {val}")
+        ult_digito = self.matricula_bytes[-1]
+        print(
+            f"-> [Parte 1 - 0xB1] Eco inteiro processado: {val} "
+            f"(enviado {valor} × último dígito {ult_digito} = {val})"
+        )
         return val
 
     def envia_float(self, valor: float) -> float:
@@ -97,7 +101,11 @@ class ProtocoloSimplificado:
             )
 
         val = struct.unpack("<f", resp)[0]
-        print(f"-> [Parte 1 - 0xB2] Eco float processado: {val:.4f}")
+        ult_digito = self.matricula_bytes[-1]
+        print(
+            f"-> [Parte 1 - 0xB2] Eco float processado: {val:.4f} "
+            f"(enviado {valor:.4f} × último dígito {ult_digito} = {val:.4f})"
+        )
         return val
 
     def envia_string(self, texto: str) -> str:
@@ -122,6 +130,7 @@ class ProtocoloSimplificado:
                 f"Tamanho de string inconsistente no comando 0xB3: declarado {tam} B, recebido {len(resp) - 1} B"
             )
 
-        retorno = resp[1 : 1 + tam].decode("utf-8", errors="replace")
-        print(f"-> [Parte 1 - 0xB3] Retorno de string ({tam} B): '{retorno}'")
+        retorno = resp[1 : 1 + tam].decode("utf-8", errors="replace").rstrip("\x00")
+        print(f"-> [Parte 1 - 0xB3] Retorno de string ({len(retorno)} chars / {tam} B declarados): '{retorno}'")
         return retorno
+

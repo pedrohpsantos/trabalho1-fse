@@ -67,11 +67,16 @@ class ProtocoloModbusP2:
                 f"CRC-16 inválido na resposta recebida: {resp.hex(' ').upper()}"
             )
 
-        # Verificação do endereço
+        # Verificação do endereço. A ESP32 da bancada responde ao wrapper
+        # didático com 0x00 (endereço de retorno do bridge UART), embora a
+        # requisição seja corretamente endereçada a 0x01. Preserve 0x01 para
+        # implementações MODBUS convencionais e aceite 0x00 somente neste
+        # cliente, cuja função/subcódigo e CRC continuam sendo validados abaixo.
         addr_resp = resp[0]
-        if addr_resp != self.endereco:
+        enderecos_resposta_validos = (self.endereco, 0x00)
+        if addr_resp not in enderecos_resposta_validos:
             raise ValueError(
-                f"Endereço divergente na resposta: esperado 0x{self.endereco:02X}, recebido 0x{addr_resp:02X}"
+                f"Endereço divergente na resposta: esperado 0x{self.endereco:02X} ou 0x00, recebido 0x{addr_resp:02X}"
             )
 
         # Verificação de bit de erro/exceção (MSB ativo na função)
@@ -88,6 +93,19 @@ class ProtocoloModbusP2:
                 f"Função divergente na resposta: esperada 0x{funcao_esperada:02X}, recebida 0x{func_resp:02X}"
             )
 
+        # A resposta da ESP32 ecoa o subcódigo da Parte 2 antes dos dados.
+        # Ele também protege contra a associação acidental de uma resposta de
+        # outro comando que use a mesma função MODBUS.
+        subcodigo_esperado = payload[2]
+        if len(resp) < 6:
+            raise ValueError(
+                f"Resposta MODBUS sem subcódigo: recebido {len(resp)} bytes"
+            )
+        if resp[2] != subcodigo_esperado:
+            raise ValueError(
+                f"Subcódigo divergente na resposta: esperado 0x{subcodigo_esperado:02X}, recebido 0x{resp[2]:02X}"
+            )
+
         if len(resp) < tamanho_minimo:
             raise ValueError(
                 f"Tamanho da resposta insuficiente: recebido {len(resp)} bytes, esperado no mínimo {tamanho_minimo}"
@@ -98,59 +116,67 @@ class ProtocoloModbusP2:
     def solicita_inteiro(self) -> int:
         """Solicita valor inteiro via MODBUS (Função 0x23, Subcódigo 0xA1)."""
         payload = bytes([self.endereco, 0x23, 0xA1])
-        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=8)
+        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=9)
 
-        # Formato de resposta: [addr][0x23][int32 LE: 4B][CRC: 2B]
-        val = struct.unpack("<i", resp[2:6])[0]
+        # Formato de resposta: [addr][0x23][sub][int32 LE: 4B][CRC: 2B]
+        val = struct.unpack("<i", resp[3:7])[0]
         print(f"-> [Parte 2 - MODBUS 0x23/0xA1] Inteiro recebido: {val}")
         return val
 
     def solicita_float(self) -> float:
         """Solicita valor float via MODBUS (Função 0x23, Subcódigo 0xA2)."""
         payload = bytes([self.endereco, 0x23, 0xA2])
-        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=8)
+        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=9)
 
-        # Formato de resposta: [addr][0x23][float LE: 4B][CRC: 2B]
-        val = struct.unpack("<f", resp[2:6])[0]
+        # Formato de resposta: [addr][0x23][sub][float LE: 4B][CRC: 2B]
+        val = struct.unpack("<f", resp[3:7])[0]
         print(f"-> [Parte 2 - MODBUS 0x23/0xA2] Float recebido: {val:.4f}")
         return val
 
     def solicita_string(self) -> str:
         """Solicita valor string via MODBUS (Função 0x23, Subcódigo 0xA3)."""
         payload = bytes([self.endereco, 0x23, 0xA3])
-        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=5)
+        resp = self._executar_transacao(payload, funcao_esperada=0x23, tamanho_minimo=6)
 
-        # Formato de resposta: [addr][0x23][tam: 1B][string: tam B][CRC: 2B]
-        tam = resp[2]
-        if len(resp) < 5 + tam:
+        # Formato de resposta: [addr][0x23][sub][tam: 1B][string: tam B][CRC: 2B]
+        tam = resp[3]
+        if len(resp) < 6 + tam:
             raise ValueError(
                 f"Payload de string MODBUS incompleto: esperado {tam} bytes de dados"
             )
 
-        texto = resp[3 : 3 + tam].decode("utf-8", errors="replace")
-        print(f"-> [Parte 2 - MODBUS 0x23/0xA3] String recebida ({tam} B): '{texto}'")
+        texto = resp[4 : 4 + tam].decode("utf-8", errors="replace").rstrip("\x00")
+        print(f"-> [Parte 2 - MODBUS 0x23/0xA3] String recebida ({len(texto)} chars / {tam} B declarados): '{texto}'")
         return texto
 
     def envia_inteiro(self, valor: int) -> int:
         """Envia valor inteiro via MODBUS (Função 0x16, Subcódigo 0xB1)."""
         payload_dados = struct.pack("<i", valor)
         payload = bytes([self.endereco, 0x16, 0xB1]) + payload_dados
-        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=8)
+        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=9)
 
-        # Formato de resposta: [addr][0x16][int32 LE: 4B][CRC: 2B]
-        val = struct.unpack("<i", resp[2:6])[0]
-        print(f"-> [Parte 2 - MODBUS 0x16/0xB1] Retorno inteiro: {val}")
+        # Formato de resposta: [addr][0x16][sub][int32 LE: 4B][CRC: 2B]
+        val = struct.unpack("<i", resp[3:7])[0]
+        ult_digito = self.matricula_bytes[-1]
+        print(
+            f"-> [Parte 2 - MODBUS 0x16/0xB1] Retorno inteiro: {val} "
+            f"(enviado {valor} × último dígito {ult_digito} = {val})"
+        )
         return val
 
     def envia_float(self, valor: float) -> float:
         """Envia valor float via MODBUS (Função 0x16, Subcódigo 0xB2)."""
         payload_dados = struct.pack("<f", valor)
         payload = bytes([self.endereco, 0x16, 0xB2]) + payload_dados
-        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=8)
+        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=9)
 
-        # Formato de resposta: [addr][0x16][float LE: 4B][CRC: 2B]
-        val = struct.unpack("<f", resp[2:6])[0]
-        print(f"-> [Parte 2 - MODBUS 0x16/0xB2] Retorno float: {val:.4f}")
+        # Formato de resposta: [addr][0x16][sub][float LE: 4B][CRC: 2B]
+        val = struct.unpack("<f", resp[3:7])[0]
+        ult_digito = self.matricula_bytes[-1]
+        print(
+            f"-> [Parte 2 - MODBUS 0x16/0xB2] Retorno float: {val:.4f} "
+            f"(enviado {valor:.4f} × último dígito {ult_digito} = {val:.4f})"
+        )
         return val
 
     def envia_string(self, texto: str) -> str:
@@ -162,15 +188,15 @@ class ProtocoloModbusP2:
             )
 
         payload = bytes([self.endereco, 0x16, 0xB3, len(dados_str)]) + dados_str
-        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=5)
+        resp = self._executar_transacao(payload, funcao_esperada=0x16, tamanho_minimo=6)
 
-        # Formato de resposta: [addr][0x16][tam: 1B][string: tam B][CRC: 2B]
-        tam = resp[2]
-        if len(resp) < 5 + tam:
+        # Formato de resposta: [addr][0x16][sub][tam: 1B][string: tam B][CRC: 2B]
+        tam = resp[3]
+        if len(resp) < 6 + tam:
             raise ValueError(
                 f"Payload de string MODBUS incompleto: esperado {tam} bytes de dados"
             )
 
-        retorno = resp[3 : 3 + tam].decode("utf-8", errors="replace")
-        print(f"-> [Parte 2 - MODBUS 0x16/0xB3] Retorno string ({tam} B): '{retorno}'")
+        retorno = resp[4 : 4 + tam].decode("utf-8", errors="replace").rstrip("\x00")
+        print(f"-> [Parte 2 - MODBUS 0x16/0xB3] Retorno string ({len(retorno)} chars / {tam} B declarados): '{retorno}'")
         return retorno

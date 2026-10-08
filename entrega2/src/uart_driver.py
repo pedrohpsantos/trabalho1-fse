@@ -304,29 +304,29 @@ class FakeUartDriver(BaseUartDriver):
 
         if func == 0x23:  # Solicitações
             if sub == 0xA1:
-                resp_payload = bytes([0x01, 0x23]) + struct.pack("<i", 999)
+                resp_payload = bytes([0x01, 0x23, sub]) + struct.pack("<i", 999)
                 return anexar_crc16(resp_payload)
             elif sub == 0xA2:
-                resp_payload = bytes([0x01, 0x23]) + struct.pack("<f", 27.85)
+                resp_payload = bytes([0x01, 0x23, sub]) + struct.pack("<f", 27.85)
                 return anexar_crc16(resp_payload)
             elif sub == 0xA3:
                 txt = b"MODBUS_OK"
-                resp_payload = bytes([0x01, 0x23, len(txt)]) + txt
+                resp_payload = bytes([0x01, 0x23, sub, len(txt)]) + txt
                 return anexar_crc16(resp_payload)
         elif func == 0x16:  # Envios
             if sub == 0xB1:
                 val = struct.unpack("<i", corpo[3:7])[0]
-                resp_payload = bytes([0x01, 0x16]) + struct.pack("<i", val * ult_digito)
+                resp_payload = bytes([0x01, 0x16, sub]) + struct.pack("<i", val * ult_digito)
                 return anexar_crc16(resp_payload)
             elif sub == 0xB2:
                 val = struct.unpack("<f", corpo[3:7])[0]
-                resp_payload = bytes([0x01, 0x16]) + struct.pack("<f", val * ult_digito)
+                resp_payload = bytes([0x01, 0x16, sub]) + struct.pack("<f", val * ult_digito)
                 return anexar_crc16(resp_payload)
             elif sub == 0xB3:
                 tam = corpo[3]
                 txt_enviado = corpo[4 : 4 + tam].decode("utf-8", errors="replace")
                 txt_resp = f"MODBUS Eco: {txt_enviado}".encode()
-                resp_payload = bytes([0x01, 0x16, len(txt_resp)]) + txt_resp
+                resp_payload = bytes([0x01, 0x16, sub, len(txt_resp)]) + txt_resp
                 return anexar_crc16(resp_payload)
 
         # Exceção função/sub inválido

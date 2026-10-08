@@ -4,6 +4,8 @@ Trabalho 1 — **Entrega 2**
 Disciplina de **Fundamentos de Sistemas Embarcados (2026/2)**  
 Faculdade do Gama — Universidade de Brasília (FGA-UnB)
 
+*Vídeo de apresentação*:
+
 ---
 
 ## 1. Objetivos
@@ -244,39 +246,3 @@ Para verificação estática de código e formatação:
 make lint
 make format
 ```
-
----
-
-## 11. Evidências do ThingsBoard
-
-> **Espaço reservado para inserção da captura de tela da bancada:**
->
-> Insira aqui o print do widget UART do ThingsBoard com os **6 dígitos da sua matrícula** destacados em amarelo no log de mensagens recebidas:
->
-> ![Dashboard UART com Matrícula](./imagens/Dashboard_UART_matricula.png)
-
----
-
-## 12. Roteiro Sugerido para o Vídeo de Apresentação (Até 8 Minutos)
-
-1. **Abertura (0:00 - 0:45)**:
-   - Câmera aberta exibindo os integrantes da equipe;
-   - Apresentação nominal dos participantes e leitura da matrícula;
-   - Breve introdução dos objetivos da Entrega 2.
-2. **Parte 1 — Protocolo Simplificado (0:45 - 2:00)**:
-   - Executar os comandos 1 a 6 da Parte 1 no menu interativo;
-   - Destacar os bytes `[TX]` e `[RX]` no terminal em hexadecimal e a decodificação dos valores (LE);
-   - Mostrar a reação correspondente no widget UART do ThingsBoard.
-3. **Parte 2 — Wrapper MODBUS (2:00 - 3:30)**:
-   - Executar os comandos 1 a 6 da Parte 2;
-   - Mostrar o encapsulamento com `0x23` e `0x16`, a inclusão dos 6 dígitos e os 2 bytes de CRC-16 no final;
-   - Mostrar a validação de resposta com verificação de CRC.
-4. **Parte 3 — Simulador de Elevadores (3:30 - 6:30)**:
-   - **Watchdog e Derating**: Mostrar `le_estado_predio()` com `watchdog_ambiente = 1` e barramento em 3000 mA. Enviar `escreve_condicao_contorno()` e mostrar o watchdog voltando a `0` e o barramento subindo para 12000 mA;
-   - **Comando de Portas**: Acionar `comanda_porta(1, 1)` (abrir) e `comanda_porta(1, 2)` (fechar) e acompanhar a transição de estado via `le_estado_cabine(1)`;
-   - **Fila de Chamadas**: Criar uma chamada no quiosque web do ThingsBoard, ler com `le_chamada_da_fila()`, atribuir com `atribui_chamada()` e retirá-la com `remove_chamada_da_fila()`;
-   - **Exceções**: Disparar o teste de escrita em registrador Read-Only e demonstrar a captura da exceção `0x02`.
-5. **Monitoramento Contínuo e Conclusão (6:30 - 7:30)**:
-   - Iniciar o modo de leitura contínua (1 Hz) e demonstrar a telemetria ao vivo;
-   - Encerrar com `Ctrl+C` exibindo o tratamento de sinal limpo;
-   - Encerramento pelos integrantes.

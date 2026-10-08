@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -101,8 +102,9 @@ def test_excecao_0x03_valor_invalido(client, fake_driver):
 
 def test_cli_ajuda():
     """Garante que main.py pode ser executado com --help e exibe a descrição."""
+    caminho_main = Path(__file__).resolve().parent.parent / "main.py"
     res = subprocess.run(
-        [sys.executable, "main.py", "--help"],
+        [sys.executable, str(caminho_main), "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -111,3 +113,4 @@ def test_cli_ajuda():
     assert "CLI da Entrega 2" in res.stdout
     assert "--mock" in res.stdout
     assert "--matricula" in res.stdout
+

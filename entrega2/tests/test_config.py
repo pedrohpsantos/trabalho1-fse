@@ -9,7 +9,8 @@ def test_matricula_padrao_valida():
     """Garante que a matrícula padrão possui 6 dígitos e retorna bytes crus numéricos."""
     mat_bytes = validar_e_obter_matricula()
     assert len(mat_bytes) == 6
-    assert list(mat_bytes) == [6, 5, 4, 3, 2, 1]
+    assert list(mat_bytes) == [0, 3, 8, 4, 4, 2]
+
     # Garante que nenhum dígito é ASCII (por exemplo, ord('6') é 54)
     for b in mat_bytes:
         assert 0 <= b <= 9

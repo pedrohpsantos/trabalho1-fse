@@ -317,6 +317,8 @@ class SimuladorModbusClient:
             "chamada_origem": regs[1],
             "chamada_destino": regs[2],
             "chamada_id": regs[3],
+            "ambiente_temp_c": regs[5] / 10.0,
+            "ambiente_press_hpa": regs[6],
             "barramento_max_ma": regs[7],
             "watchdog_ambiente": regs[8],
             "cenario_ativo": regs[11],
