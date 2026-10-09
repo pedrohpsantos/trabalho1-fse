@@ -4,7 +4,7 @@ Trabalho 1 — **Entrega 2**
 Disciplina de **Fundamentos de Sistemas Embarcados (2026/2)**  
 Faculdade do Gama — Universidade de Brasília (FGA-UnB)
 
-*Vídeo de apresentação*:
+*Vídeo de apresentação*: https://youtu.be/jIa_jKNr2Eo?is=7PbL-yQusDOndkKr
 
 ---
 
