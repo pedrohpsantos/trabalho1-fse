@@ -9,6 +9,8 @@ O repositório está organizado em duas entregas independentes e complementares:
 - **[Entrega 1](./entrega1/README.md)** — controle da Cabine 1 por GPIO, com acionamento do motor, PWM, encoder em quadratura, sensores, nivelamento, limites de segurança e modo simulado.
 - **[Entrega 2](./entrega2/README.md)** — comunicação serial UART entre Raspberry Pi e ESP32, com protocolo simplificado, wrapper MODBUS modificado, CRC-16 e acesso aos registradores do simulador de elevadores.
 
+- **[Entrega Final](./entrega_final/README.md)** — sistema distribuído completo (Servidor Central + 3 Servidores Distribuídos), calibração, PID, Cotas de potência, Despacho por Destino e bancada virtual `--mock`.
+
 As documentações específicas apresentam o detalhamento de hardware, protocolos, arquitetura, comandos da CLI, exemplos de tráfego e testes de cada etapa.
 
 ## Estrutura do repositório
