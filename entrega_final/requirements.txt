@@ -1,0 +1,9 @@
+# Execução em hardware (Raspberry Pi). No Pi 5 / Bookworm use `rpi-lgpio` no lugar de RPi.GPIO.
+RPi.GPIO>=0.7.1; sys_platform == "linux"
+smbus2>=0.4.3; sys_platform == "linux"
+pyserial>=3.5
+
+# Desenvolvimento, testes e gráficos
+pytest>=8.0
+ruff>=0.4
+matplotlib>=3.8

@@ -1,0 +1,28 @@
+{
+  "escuta": {
+    "host": "127.0.0.1",
+    "porta": 5000,
+    "token": ""
+  },
+  "uart": {
+    "porta": "/dev/serial0",
+    "timeout_s": 0.3
+  },
+  "matricula": "038442",
+  "i2c": {
+    "barramento": 1,
+    "endereco": "0x76"
+  },
+  "pasta_dados": "dados",
+  "periodos": {
+    "ambiente_s": 2.5,
+    "poll_cabine_s": 0.2,
+    "chamadas_s": 0.25
+  },
+  "tempos": {
+    "seg_por_andar": 4.0,
+    "seg_arranque": 3.0,
+    "seg_porta_abrir": 1.5,
+    "seg_parada": 8.5
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "cabine": 3,
+  "endereco_modbus": "0x13",
+  "central": {
+    "host": "127.0.0.1",
+    "porta": 5000,
+    "token": ""
+  },
+  "pinos": {
+    "pwm": 18,
+    "dir1": 24,
+    "dir2": 25,
+    "enc_a": 7,
+    "enc_b": 8,
+    "cortina": 19,
+    "sensor_andar": 1
+  },
+  "pid": {
+    "kp": 0.5,
+    "ki": 0.02,
+    "kd": 5.0,
+    "limite_integral_pct": 15.0,
+    "rampa_pct_por_s": 25.0
+  },
+  "params": {
+    "tempo_porta_aberta_s": 4.0,
+    "duty_calibracao": 40.0,
+    "margem_extremo_mm": 60.0,
+    "debounce_cortina_s": 0.04
+  }
+}
