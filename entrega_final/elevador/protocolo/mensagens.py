@@ -16,6 +16,7 @@ Central -> Cabine:
   tarefa       nova viagem atribuída pelo Despacho
   ir_andar     comando manual de envio a um andar
   recalibrar   força nova calibração
+  porta_recusada  intertravamento: o simulador não confirmou a cabine nivelada; ABRIR não enviado
 """
 
 import json
@@ -78,7 +79,6 @@ ESQUEMAS: dict[str, dict[str, Any]] = {
     "cota": {"cota_ma": _FAIXA_U16, "ts": "num", "validade_s": "num", "seq": _FAIXA_ID},
     "modbus": {
         "andar_atual": _FAIXA_ANDAR,
-        "nivelado": _int(0, 1),
         "porta_estado": _int(0, 4),
         "corrente_ma": _FAIXA_U16,
         "falha": _FAIXA_U16,
@@ -93,6 +93,7 @@ ESQUEMAS: dict[str, dict[str, Any]] = {
     },
     "ir_andar": {"andar": _FAIXA_ANDAR},
     "recalibrar": {},
+    "porta_recusada": {"motivo": "str"},
 }
 
 SENTIDOS = {"subindo", "descendo", "parado"}

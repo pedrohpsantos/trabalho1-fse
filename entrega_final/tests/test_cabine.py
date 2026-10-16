@@ -194,3 +194,87 @@ def test_pid_padrao_do_enunciado_e_configuravel():
     assert (padrao.kp, padrao.ki, padrao.kd) == (0.5, 0.05, 40.0)
     h = HarnessCabine(pid=PID_TESTE)
     assert h.runtime.pid.kd == pytest.approx(5.0)
+
+
+def test_espelho_modbus_por_tcp_nao_carrega_nivelado_nem_posicao_mm():
+    """A cabine não recebe `nivelado` (reg. 1) nem `posicao_mm` (reg. 7): não pode usá-los."""
+    from elevador.protocolo.mensagens import ESQUEMAS
+
+    campos = {c.lstrip("?") for c in ESQUEMAS["modbus"]}
+    assert "nivelado" not in campos and "posicao_mm" not in campos
+
+
+def test_registro_csv_da_malha_grava_um_registro_por_tick(harness, tmp_path):
+    import csv
+
+    from elevador.cabine.registro import CAMPOS, RegistroCsv
+
+    registro = RegistroCsv(str(tmp_path / "malha.csv"))
+    harness.runtime.receber({"t": "ir_andar", "andar": 2})
+    for _ in range(40):
+        harness.passo()
+        registro.gravar(harness.runtime.relogio(), harness.runtime)
+    registro.fechar()
+    registro.gravar(0.0, harness.runtime)  # depois de fechado: ignora em silêncio
+    linhas = list(csv.DictReader(open(tmp_path / "malha.csv", encoding="utf-8")))
+    assert len(linhas) == 40 and tuple(linhas[0]) == CAMPOS
+    assert any(linha["estado"] == "movendo" and linha["alvo_mm"] for linha in linhas)
+
+
+def test_porta_ignorada_pelo_simulador_dispara_recentralizacao_estrita(harness):
+    """Regressão da rasp32: parada a 10 mm (borda da faixa) e o simulador não abria a porta."""
+    from elevador.cabine.controlador import ACEITE_RECENTRALIZACAO_MM, PORTA_SEM_RESPOSTA_S
+
+    rt = harness.runtime
+    assert ir_para(harness, 1)
+    rt.estado = EstadoCabine.OCIOSA
+    harness.rodar(10, lambda: rt.estado == EstadoCabine.OCIOSA and harness.bancada.cabines[1].porta == 0)
+    rt.hal.deslocar_posicao(-4)  # encoder 4 mm aquém do centro: "nivelada" para a cabine
+    agora = rt.relogio()
+    rt._abrir_porta(agora, 1)
+    rt._modbus = {"andar_atual": 1, "porta_estado": PortaEstado.FECHADA, "corrente_ma": 0, "falha": 0, "ts": agora}
+    rt._passo_abrindo(agora + 1.0, rt.hal.posicao())
+    assert rt.estado == EstadoCabine.ABRINDO_PORTA  # ainda dentro do prazo: só reenvia o pedido
+    rt._modbus["ts"] = agora + PORTA_SEM_RESPOSTA_S + 0.1
+    rt._passo_abrindo(agora + PORTA_SEM_RESPOSTA_S + 0.1, rt.hal.posicao())
+    assert rt.estado == EstadoCabine.MOVENDO and rt.recentralizacoes == 1
+    assert rt.ctrl.aceite_mm == ACEITE_RECENTRALIZACAO_MM
+
+
+def test_modo_degradado_reabre_a_porta_que_o_firmware_fecha_sozinho(harness):
+    """Na rasp32 o firmware fecha a porta 3 s após abrir; degradada, a cabine a mantém aberta."""
+    rt = harness.runtime
+    assert ir_para(harness, 1)
+    enviados = []
+    enviar_original = rt.enlace.enviar
+    rt.enlace.enviar = lambda tipo, **c: enviados.append((tipo, c)) or enviar_original(tipo, **c)
+    agora = rt.relogio()
+    rt.cota.invalidar()
+    rt.degradado = True
+    rt.estado = EstadoCabine.EMBARQUE
+    rt._t_cmd_porta = float("-inf")
+    rt._modbus = {"andar_atual": 1, "porta_estado": PortaEstado.FECHANDO, "corrente_ma": 300, "falha": 0, "ts": agora}
+    rt._passo_embarque(agora, rt.hal.posicao())
+    assert ("porta_cmd", {"cabine": 1, "cmd": 1}) in enviados
+    enviados.clear()
+    rt._passo_embarque(agora + 0.2, rt.hal.posicao())  # limitado a 1 pedido a cada 0,5 s
+    assert not enviados
+    rt._modbus["porta_estado"] = PortaEstado.ABERTA
+    rt._passo_embarque(agora + 1.0, rt.hal.posicao())  # aberta: nada a fazer
+    assert not enviados and rt.estado == EstadoCabine.EMBARQUE
+
+
+def test_so_pede_cota_de_partida_quem_esta_pronta_para_sair(harness):
+    """Ciclos de porta não seguram a admissão de partida (a outra cabine ficava sem Cota)."""
+    from elevador.dominio.agenda import Tarefa
+
+    rt = harness.runtime
+    rt.agenda.adicionar(Tarefa(7, 3, 5, rt.relogio()))
+    rt.degradado = False
+    for estado in (EstadoCabine.ABRINDO_PORTA, EstadoCabine.EMBARQUE, EstadoCabine.FECHANDO_PORTA):
+        rt.estado = estado
+        assert rt.necessidade() == "nenhuma"
+    rt.estado = EstadoCabine.OCIOSA
+    assert rt.necessidade() == "partida"
+    rt.estado = EstadoCabine.MOVENDO
+    assert rt.necessidade() == "movendo"

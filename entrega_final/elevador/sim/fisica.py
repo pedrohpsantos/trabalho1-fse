@@ -7,7 +7,9 @@ Modelo (deliberadamente simples e documentado no README):
   * posição verdadeira em mm; o contador do encoder = posição relativa à partida + deriva
     (acumulada a cada inversão de sentido e por distância percorrida);
   * bandeirolas centradas nos andares reais, com semilargura diferente em cada andar;
-  * corrente do motor proporcional ao duty (6000 mA a 100%).
+  * corrente como no firmware medido: 300 mA de repouso + 57 mA por ponto de duty;
+  * falhas como no firmware: 0x01 porta comandada fora do nível (não abre), 0x02 barramento
+    em sobrecarga (marcado pela bancada), 0x04 fim de curso.
 """
 
 import random
@@ -15,7 +17,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..constantes import (
-    CORRENTE_MAX_CABINE_MA,
     NUM_ANDARES,
     POCO_MM,
     SOBRECURSO_MM,
@@ -24,9 +25,12 @@ from ..constantes import (
     Direcao,
     PortaComando,
     PortaEstado,
+    corrente_estimada_ma,
 )
 
-FALHA_FIM_DE_CURSO = 0x01
+FALHA_PORTA_FORA_NIVEL = 0x01
+FALHA_SOBRECARGA = 0x02
+FALHA_FIM_DE_CURSO = 0x04
 SEQUENCIA_QUADRATURA = ((0, 0), (0, 1), (1, 1), (1, 0))  # sentido "subir" (contagem crescente)
 
 
@@ -137,6 +141,8 @@ class CabineFisica:
             if self.porta in (PortaEstado.FECHADA, PortaEstado.FECHANDO, PortaEstado.OBSTRUIDA):
                 if not self.nivelado or abs(self.v) > 1.0:
                     self.violacoes_porta_fora_nivel += 1
+                    self.falha |= FALHA_PORTA_FORA_NIVEL
+                    return  # como o firmware: registra a falha e não abre
                 self.porta = PortaEstado.ABRINDO
                 self._timer_porta = self.params.tempo_porta_s
         elif comando == PortaComando.FECHAR and self.porta in (PortaEstado.ABERTA, PortaEstado.ABRINDO):
@@ -154,13 +160,13 @@ class CabineFisica:
             if not movendo and self.duty < p.atrito_pct:
                 alvo_v = 0.0
             tau = p.tau_motor_s
-            self.corrente_ma = int(self.duty / 100.0 * CORRENTE_MAX_CABINE_MA)
+            self.corrente_ma = corrente_estimada_ma(self.duty)
         elif self.dir == Direcao.FREIO:
             alvo_v, tau = 0.0, p.tau_freio_s
-            self.corrente_ma = 0
+            self.corrente_ma = corrente_estimada_ma(0.0, acionado=False)
         else:
             alvo_v, tau = 0.0, p.tau_livre_s
-            self.corrente_ma = 0
+            self.corrente_ma = corrente_estimada_ma(0.0, acionado=False)
         self.max_corrente_ma = max(self.max_corrente_ma, self.corrente_ma)
         self.v += (alvo_v - self.v) * min(1.0, dt / tau)
         if abs(self.v) < 0.3 and alvo_v == 0.0:

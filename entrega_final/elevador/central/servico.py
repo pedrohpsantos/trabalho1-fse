@@ -29,6 +29,8 @@ MAX_CHAMADAS_POR_CICLO = 8
 IDADE_MAX_LEITURA_AMBIENTE_S = 20.0  # abaixo dos 30 s do watchdog do simulador
 IDADE_MAX_BARRAMENTO_S = 5.0
 INTERVALO_MIN_COTA_S = 0.1
+ESPERA_REDUCAO_COTA_S = 0.3  # reduções aplicadas antes das concessões (break-before-make)
+RESERVA_POUSO_S = 60.0  # tempo máximo de um pouso degradado (16,7 % de duty, até 1 andar)
 
 
 class ServicoCentral:
@@ -51,6 +53,7 @@ class ServicoCentral:
         )
         self.parar = threading.Event()
         self._trava = threading.RLock()
+        self._trava_cotas = threading.Lock()  # uma renegociação de cada vez (laço de cotas x laço de chamadas)
         self._threads: list[threading.Thread] = []
         self._ev_cota = threading.Event()
         self._ev_poll = threading.Event()
@@ -59,10 +62,13 @@ class ServicoCentral:
         self.leitura_ambiente: Leitura | None = None
         self._t_leitura_ambiente = float("-inf")
         self.erros_modbus = 0
+        self.portas_recusadas = 0
         self._seq_cota = 0
         self._cotas: dict[int, int] = {1: 0, 2: 0, 3: 0}
         self._necessidades: dict[int, str] = {1: "nenhuma", 2: "nenhuma", 3: "nenhuma"}
         self._ultimo_cenario = 0
+        self.cotas_suspensas = False  # teste do Modo Degradado (comando `cotas off`)
+        self._auditoria: dict[int, tuple[int, int, int]] = {}  # cabine -> (porta, falha, passageiros) registrados
 
     # ------------------------------------------------------------------ ciclo de vida
     def iniciar(self) -> None:
@@ -121,6 +127,8 @@ class ServicoCentral:
     def _ao_desconexao(self, cabine: int) -> None:
         with self._trava:
             est = self.despacho.cabines[cabine]
+            if est.necessidade == "movendo":
+                est.reserva_ate = self.relogio() + RESERVA_POUSO_S
             est.conectada = False
             est.estado = "desconectada"
             est.necessidade = "nenhuma"
@@ -139,12 +147,36 @@ class ServicoCentral:
             if msg["tipo"] in ("embarque", "desembarque"):
                 self._salvar()
         elif tipo == "porta_cmd":
-            self.gerente.submeter(
-                lambda api: api.comandar_porta(cabine, PortaComando(msg["cmd"])), PRIO_URGENTE
-            ).add_done_callback(lambda f: self._falha_modbus(f, f"porta cabine {cabine}"))
+            if msg["cmd"] == PortaComando.ABRIR:
+                self._abrir_porta_intertravada(cabine)
+            else:
+                self.gerente.submeter(
+                    lambda api: api.comandar_porta(cabine, PortaComando(msg["cmd"])), PRIO_URGENTE
+                ).add_done_callback(lambda f: self._falha_modbus(f, f"porta cabine {cabine}"))
         elif tipo == "pedir_modbus":
             self._ev_poll.set()
             self._ler_e_empurrar(cabine, PRIO_URGENTE)
+
+    def _abrir_porta_intertravada(self, cabine: int) -> None:
+        """Defesa em profundidade: a cabine decide pelo encoder, mas o Central (dono da UART) só
+        repassa ABRIR se o simulador confirma a cabine nivelada. Nunca entra na calibração nem
+        na malha; serve para que nenhuma porta seja comandada fora do nível (Seção 7.5)."""
+
+        def concluir(futuro) -> None:
+            if futuro.exception():
+                self._falha_modbus(futuro, f"porta cabine {cabine}")
+                return
+            recusada = futuro.result()
+            if recusada is not None:
+                self.portas_recusadas += 1
+                log.warning(
+                    "intertravamento: ABRIR da cabine %d recusado (fora de nível; andar_atual=%d)",
+                    cabine,
+                    recusada.andar_atual,
+                )
+                self.rede.enviar(cabine, "porta_recusada", motivo="fora_de_nivel")
+
+        self.gerente.submeter(lambda api: api.abrir_porta_se_nivelada(cabine), PRIO_URGENTE).add_done_callback(concluir)
 
     def _telemetria(self, cabine: int, msg: dict) -> None:
         with self._trava:
@@ -153,10 +185,15 @@ class ServicoCentral:
             est.conectada = True
             est.calibrada = msg["calibrada"]
             est.andar, est.sentido, est.estado = msg["andar"], msg["sentido"], msg["estado"]
+            if msg["necessidade"] == "partida" and est.necessidade != "partida":
+                est.partida_desde = self.relogio()
+            elif msg["necessidade"] != "partida":
+                est.partida_desde = float("inf")
             est.degradado, est.necessidade, est.alvo = msg["degradado"], msg["necessidade"], msg["alvo"]
             est.porta, est.corrente_ma, est.cota_ma = msg["porta"], msg["corrente_ma"], msg["cota_ma"]
             est.pos_mm, est.nivelado, est.falha = msg["pos_mm"], msg["nivelado"], msg.get("falha", "")
             est.ts_telemetria = self.relogio()
+            est.reserva_ate = float("-inf")
             self._necessidades[cabine] = est.necessidade
         if mudou:
             self._ev_cota.set()  # renegociação imediata: uma cabine quer partir
@@ -176,8 +213,11 @@ class ServicoCentral:
                 self.erros_modbus += 1
                 log.warning("leitura do prédio falhou: %s", erro)
                 continue
+            teto_anterior = self.barramento_atual()
             self.predio, self._t_predio = estado, self.relogio()
             self._ultimo_cenario = estado.cenario_ativo
+            if self.barramento_atual() != teto_anterior:
+                self._renovar_cotas()
             try:
                 self._processar_fila(estado)
             except (ErroModbus, TimeoutError) as erro:
@@ -238,16 +278,39 @@ class ServicoCentral:
             proxima_forcada = INTERVALO_MIN_COTA_S
             self.parar.wait(proxima_forcada)  # limita a taxa de renegociações
 
+    def _necessidade_para_cota(self, cab, agora: float) -> str:
+        if cab.conectada:
+            return cab.necessidade
+        return "reserva" if agora < cab.reserva_ate else "nenhuma"
+
     def _renovar_cotas(self) -> None:
+        """Reparte e envia as Cotas. Break-before-make: quando uma renegociação reduz a Cota de
+        umas cabines para conceder a outras, as reduções saem primeiro e as concessões só depois
+        de `ESPERA_REDUCAO_COTA_S`; assim a soma das correntes reais não passa do barramento no
+        transitório (na rasp32 um envio simultâneo levou uma cabine a 1668 mA com Cota de 950)."""
+        if self.cotas_suspensas:
+            return  # sem renovação as Cotas expiram em 2 s e as cabines entram em Modo Degradado
+        with self._trava_cotas:
+            agora = self.relogio()
+            with self._trava:
+                necessidades = {n: self._necessidade_para_cota(c, agora) for n, c in self.despacho.cabines.items()}
+                ordem = sorted(self.despacho.cabines, key=lambda n: (self.despacho.cabines[n].partida_desde, n))
+                cotas = repartir(self.barramento_atual(), necessidades, ordem)
+                anteriores = dict(self._cotas)
+            reducoes = {c: v for c, v in cotas.items() if v < anteriores.get(c, 0)}
+            if reducoes and any(v > anteriores.get(c, 0) for c, v in cotas.items()):
+                transicao = {c: min(v, anteriores.get(c, 0)) for c, v in cotas.items()}
+                self._enviar_cotas(transicao)
+                self.parar.wait(ESPERA_REDUCAO_COTA_S)
+            self._enviar_cotas(cotas)
+
+    def _enviar_cotas(self, cotas: dict[int, int]) -> None:
         with self._trava:
-            necessidades = {n: (c.necessidade if c.conectada else "nenhuma") for n, c in self.despacho.cabines.items()}
-        cotas = repartir(self.barramento_atual(), necessidades)
-        self._cotas = cotas
-        self._seq_cota += 1
+            self._cotas = dict(cotas)
+            self._seq_cota += 1
+            seq = self._seq_cota
         for cabine, cota in cotas.items():
-            self.rede.enviar(
-                cabine, "cota", cota_ma=cota, ts=self.relogio(), validade_s=COTA_VALIDADE_S, seq=self._seq_cota
-            )
+            self.rede.enviar(cabine, "cota", cota_ma=cota, ts=self.relogio(), validade_s=COTA_VALIDADE_S, seq=seq)
 
     # ------------------------------------------------------------------ cabines (espelho MODBUS)
     def _laco_cabines(self) -> None:
@@ -266,11 +329,11 @@ class ServicoCentral:
                 log.debug("leitura da cabine %d falhou: %s", cabine, erro)
                 return
             e = futuro.result()
+            self._auditar_cabine(cabine, e)
             self.rede.enviar(
                 cabine,
                 "modbus",
                 andar_atual=e.andar_atual,
-                nivelado=e.nivelado,
                 porta_estado=e.porta_estado,
                 corrente_ma=e.corrente_ma,
                 falha=e.falha,
@@ -278,6 +341,32 @@ class ServicoCentral:
             )
 
         self.gerente.submeter(lambda api: api.ler_cabine(cabine), prioridade).add_done_callback(concluir)
+
+    def _auditar_cabine(self, cabine: int, e) -> None:
+        """Log de auditoria: cada mudança de porta/falha com o `nivelado` e a `posicao_mm` do simulador.
+
+        Só observabilidade (evidência de que a porta abre nivelada); esses registradores nunca
+        são enviados às cabines nem entram no controle.
+        """
+        atual = (e.porta_estado, e.falha, e.passageiros)
+        anterior = self._auditoria.get(cabine)
+        if anterior == atual:
+            return
+        self._auditoria[cabine] = atual
+        nivel = log.warning if e.falha and (anterior is None or e.falha != anterior[1]) else log.info
+        nivel(
+            "auditoria cabine %d: porta=%d falha=0x%02X nivelado=%d andar_atual=%d posicao_mm=%d corrente=%d mA "
+            "passageiros=%d carga=%d kg",
+            cabine,
+            e.porta_estado,
+            e.falha,
+            e.nivelado,
+            e.andar_atual,
+            e.posicao_mm,
+            e.corrente_ma,
+            e.passageiros,
+            e.carga_kg,
+        )
 
     # ------------------------------------------------------------------ ambiente (I2C -> MODBUS)
     def _laco_ambiente(self) -> None:
@@ -329,13 +418,22 @@ class ServicoCentral:
             if partes[0] == "recalibrar" and len(partes) == 2:
                 ok = self.rede.enviar(int(partes[1]), "recalibrar")
                 return "recalibração solicitada" if ok else "cabine desconectada"
+            if partes[0] == "cotas" and len(partes) == 2 and partes[1] in ("on", "off"):
+                self.cotas_suspensas = partes[1] == "off"
+                if self.cotas_suspensas:
+                    log.warning("renovação de Cotas SUSPENSA pelo operador (teste do Modo Degradado)")
+                    return "Cotas suspensas: as cabines entram em Modo Degradado em até 2 s"
+                self._ev_cota.set()
+                log.warning("renovação de Cotas retomada pelo operador")
+                return "Cotas retomadas"
             if partes[0] == "diag":
                 return (
-                    f"erros MODBUS={self.erros_modbus} cotas={self._cotas} barramento={self.barramento_atual()} "
+                    f"erros MODBUS={self.erros_modbus} portas recusadas={self.portas_recusadas} "
+                    f"cotas={self._cotas} barramento={self.barramento_atual()} "
                     f"viagens registradas={len(self.persistencia.ler_viagens())}"
                 )
             if partes[0] in ("ajuda", "help"):
-                return "ir <cab> <andar> | recalibrar <cab> | diag | sair"
+                return "ir <cab> <andar> | recalibrar <cab> | cotas off|on | diag | sair"
             if partes[0] in ("sair", "exit", "quit"):
                 self.parar.set()
                 return "encerrando..."
@@ -379,4 +477,5 @@ class ServicoCentral:
             pendentes=pendentes + ([f"fila:{p.chamadas_na_fila}"] if p and p.chamadas_na_fila else []),
             em_atendimento=a_bordo,
             erros_modbus=self.erros_modbus,
+            cotas_suspensas=self.cotas_suspensas,
         )

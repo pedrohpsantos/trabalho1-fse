@@ -12,6 +12,7 @@ from .config import ConfigCabine, carregar_config
 from .controlador import CabineRuntime
 from .hal.base import GpioCabine
 from .rede import RedeCentral
+from .registro import RegistroCsv
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +29,10 @@ def criar_hal(cfg: ConfigCabine, mock: bool, bancada: str | None) -> GpioCabine:
 
 
 class ServidorDistribuido:
-    def __init__(self, cfg: ConfigCabine, hal: GpioCabine) -> None:
+    def __init__(self, cfg: ConfigCabine, hal: GpioCabine, registro: RegistroCsv | None = None) -> None:
         self.cfg = cfg
         self.hal = hal
+        self.registro = registro
         self.rede = RedeCentral(cfg.central_host, cfg.central_porta)
         self.runtime = CabineRuntime(cfg, hal, self.rede)
         self.rede.runtime = self.runtime
@@ -49,6 +51,8 @@ class ServidorDistribuido:
             agora = time.monotonic()
             if agora >= proximo:
                 self.runtime.tick()
+                if self.registro:
+                    self.registro.gravar(agora, self.runtime)
                 proximo += PERIODO_PID_S
                 if proximo < agora:  # atrasou mais que um período: ressincroniza
                     proximo = agora + PERIODO_PID_S
@@ -66,6 +70,8 @@ class ServidorDistribuido:
         finally:
             self.rede.parar()
             self.hal.liberar()
+            if self.registro:
+                self.registro.fechar()
         log.info("cabine %d encerrada com segurança", self.cfg.cabine)
 
 
@@ -75,13 +81,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mock", action="store_true", help="usa a bancada virtual no lugar do GPIO real")
     ap.add_argument("--bancada", default=None, help="host:porta da bancada virtual (padrão 127.0.0.1:5600)")
     ap.add_argument("--log-level", default="INFO")
+    ap.add_argument("--log-arquivo", default=None)
+    ap.add_argument("--registro-csv", default=None, help="grava a malha (t, posição, alvo, duty, Cota) a cada tick")
     args = ap.parse_args(argv)
 
     cfg = carregar_config(args.config)
-    configurar_logs(f"cabine{cfg.cabine}", args.log_level)
+    configurar_logs(f"cabine{cfg.cabine}", args.log_level, args.log_arquivo)
     encerramento = EncerramentoSeguro()
     encerramento.instalar()
-    servidor = ServidorDistribuido(cfg, criar_hal(cfg, args.mock, args.bancada))
+    registro = RegistroCsv(args.registro_csv) if args.registro_csv else None
+    servidor = ServidorDistribuido(cfg, criar_hal(cfg, args.mock, args.bancada), registro)
     servidor.iniciar()
     log.info("cabine %d iniciada (%s)", cfg.cabine, "mock" if args.mock else "hardware")
     try:

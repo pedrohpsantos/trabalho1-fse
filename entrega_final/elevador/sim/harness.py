@@ -55,7 +55,6 @@ class CentralMinimo:
             {
                 "t": "modbus",
                 "andar_atual": regs[0],
-                "nivelado": regs[1],
                 "porta_estado": regs[2],
                 "corrente_ma": regs[4],
                 "falha": regs[8],

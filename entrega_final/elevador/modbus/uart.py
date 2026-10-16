@@ -2,6 +2,7 @@
 
 import abc
 import logging
+import time
 
 try:
     import serial
@@ -48,6 +49,9 @@ class UartSerial(UartBase):
             timeout=self.timeout_s,
             write_timeout=self.timeout_s,
         )
+        self._conn.reset_input_buffer()
+        self._conn.reset_output_buffer()
+        time.sleep(0.05)
 
     def fechar(self) -> None:
         if self._conn is not None:
@@ -57,17 +61,24 @@ class UartSerial(UartBase):
                 self._conn = None
 
     def transacionar(self, quadro: bytes, tamanho_esperado: int) -> bytes:
-        self.abrir()
-        conn = self._conn
-        conn.reset_input_buffer()
-        conn.write(quadro)
-        conn.flush()
-        log.debug("TX %s", quadro.hex(" "))
-        # Lê o cabeçalho; uma resposta de exceção (MSB da função) tem apenas 5 bytes.
-        resposta = conn.read(3)
-        if len(resposta) == 3:
-            falta = 2 if resposta[1] & 0x80 else tamanho_esperado - 3
-            if falta > 0:
-                resposta += conn.read(falta)
+        try:
+            self.abrir()
+            conn = self._conn
+            conn.reset_input_buffer()
+            conn.write(quadro)
+            conn.flush()
+            log.debug("TX %s", quadro.hex(" "))
+            # Lê o cabeçalho; uma resposta de exceção (MSB da função) tem apenas 5 bytes.
+            resposta = conn.read(3)
+            if len(resposta) == 3:
+                falta = 2 if resposta[1] & 0x80 else tamanho_esperado - 3
+                if falta > 0:
+                    resposta += conn.read(falta)
+        except OSError as erro:  # serial.SerialException deriva de OSError
+            # Porta caiu/ocupada: fecha para reabrir na próxima tentativa e devolve "timeout",
+            # de modo que o cliente aplique as mesmas retentativas de uma falta de resposta.
+            log.warning("UART %s: %s", self.porta, erro)
+            self.fechar()
+            return b""
         log.debug("RX %s", resposta.hex(" "))
         return resposta

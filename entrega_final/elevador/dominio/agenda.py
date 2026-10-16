@@ -8,7 +8,7 @@ Central (para estimar o efeito de uma nova atribuição). Política: varredura d
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from ..constantes import NUM_ANDARES
+from ..constantes import CAPACIDADE_PASSAGEIROS, NUM_ANDARES
 
 ID_MANUAL_BASE = 2**30  # ids acima disto são paradas sem passageiro (manual/estacionamento)
 IDADE_PRIORITARIA_S = 30.0
@@ -106,15 +106,28 @@ class Agenda:
         reais = [t for t in self.tarefas.values() if not t.suave]
         return reais if reais else list(self.tarefas.values())
 
+    def _alcancaveis(self) -> list[Tarefa]:
+        """Tarefas que justificam uma parada agora. Lotada, a cabine não para para embarcar
+        ninguém (a porta abriria sem embarque nem desembarque, em ciclo — livelock visto na
+        rasp32): primeiro entrega quem está a bordo, depois volta."""
+        ativas = self._ativas()
+        if self.a_bordo() < CAPACIDADE_PASSAGEIROS:
+            return ativas
+        return [t for t in ativas if t.a_bordo or t.avulsa]
+
     def paradas(self) -> set[int]:
-        return {t.parada for t in self._ativas()}
+        return {t.parada for t in self._alcancaveis()}
+
+    def a_bordo(self) -> int:
+        """Passageiros a bordo (paradas avulsas não carregam ninguém)."""
+        return sum(1 for t in self.tarefas.values() if t.a_bordo and not t.avulsa)
 
     def tem_viagem_real(self) -> bool:
         return any(not t.suave for t in self.tarefas.values())
 
     def proxima_parada(self, piso: int, sentido: Sentido, agora: float) -> int | None:
         """Andar para onde a cabine deve ir (pode ser o próprio `piso`)."""
-        ativas = self._ativas()
+        ativas = self._alcancaveis()
         if not ativas:
             return None
         envelhecidas = [
@@ -145,10 +158,15 @@ class Agenda:
             if tarefa.a_bordo and tarefa.destino == piso:
                 del self.tarefas[tarefa.id]
                 eventos.append(EventoParada(tarefa, "manual" if tarefa.avulsa else "desembarque"))
-        for tarefa in list(self.tarefas.values()):
+        vagas = CAPACIDADE_PASSAGEIROS - self.a_bordo()
+        for tarefa in sorted(self.tarefas.values(), key=lambda t: t.t_registro):  # FIFO, como o firmware
             if not tarefa.a_bordo and tarefa.origem == piso:
                 if chegadas_ate is not None and tarefa.t_chegada > chegadas_ate:
                     continue
+                if not tarefa.avulsa:
+                    if vagas <= 0:
+                        continue  # lotada: o passageiro espera a próxima visita
+                    vagas -= 1
                 tarefa.a_bordo = True
                 tarefa.t_embarque = agora
                 eventos.append(EventoParada(tarefa, "embarque"))

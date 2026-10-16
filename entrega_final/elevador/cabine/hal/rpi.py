@@ -81,11 +81,17 @@ class GpioRaspberry(GpioCabine):
             return
         self._ativo = False
         if self._debounce:
-            self._debounce.cancel()
+            self._debounce.cancelar()
+        p = self.pinos
+        for pino in (p.enc_a, p.enc_b, p.sensor_andar, p.cortina):
+            try:
+                GPIO.remove_event_detect(pino)
+            except Exception:  # noqa: BLE001
+                pass
         try:
             self.definir_motor(Direcao.FREIO, 0.0)
             self._pwm.stop()
         finally:
-            # DIR1/DIR2 permanecem em FREIO: só os demais pinos são liberados.
-            p = self.pinos
-            GPIO.cleanup([p.pwm, p.enc_a, p.enc_b, p.cortina, p.sensor_andar])
+            # DIR1/DIR2 permanecem em FREIO e PWM em LOW (0).
+            GPIO.setup(p.pwm, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.cleanup([p.enc_a, p.enc_b, p.cortina, p.sensor_andar])

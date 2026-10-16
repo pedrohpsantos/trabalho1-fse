@@ -2,6 +2,12 @@
 
 Máquina de estados: PARADO -> MOVENDO -> FREANDO -> CHEGOU. A saída é sempre o par
 (direção da ponte H, duty %). A posição de controle vem exclusivamente do encoder.
+
+Parada (ajustada com os CSVs da bancada real): o freio é acionado quando o ponto de parada
+PREVISTO (`erro − v·LATENCIA_FREIO_S`) cai a <= FAIXA_PARADA_MM do alvo, e a chegada só é
+aceita a <= ACEITE_CHEGADA_MM (metade da tolerância de ±10 mm). A margem absorve o erro
+residual entre o encoder e o andar real: na rasp32 uma cabine parada a 10 mm pelo encoder
+estava fora do nível para o simulador, que recusou abrir a porta.
 """
 
 from dataclasses import dataclass
@@ -28,9 +34,11 @@ FREIO = Comando(Direcao.FREIO, 0.0)
 
 
 class ControladorPosicao:
-    FAIXA_PARADA_MM = 4.0  # erro máximo para acionar o freio
-    VELOCIDADE_PARADA_MM_S = 120.0
-    DUTY_ARRANQUE = DUTY_ATRITO_ESTATICO + 2.0  # primeiro duty da rampa: vence o atrito estático
+    FAIXA_PARADA_MM = 2.5  # |ponto de parada previsto − alvo| que aciona o freio
+    LATENCIA_FREIO_S = 0.06  # deslocamento após o freio ≈ v·60 ms (medido na bancada)
+    ACEITE_CHEGADA_MM = 5.0  # chegada aceita; acima disso, nova aproximação fina
+    VELOCIDADE_PARADA_MM_S = 200.0
+    DUTY_ARRANQUE = DUTY_ATRITO_ESTATICO + 1.0  # vence o atrito e cabe na Cota mínima (950 mA => 11,4 %)
     TICKS_PARADO = 2
 
     def __init__(self, pid: Pid, rampa_pct_por_s: float = 25.0) -> None:
@@ -45,15 +53,20 @@ class ControladorPosicao:
         self._ticks_parado = 0
         self._ticks_imovel = 0
         self._saturado = 0
+        self.reaproximacoes = 0
+        self.aceite_mm = self.ACEITE_CHEGADA_MM
 
-    def ir_para(self, alvo: float) -> None:
+    def ir_para(self, alvo: float, aceite_mm: float | None = None) -> None:
+        """`aceite_mm`: margem de chegada mais estrita (recentralização para a porta)."""
         self.alvo = float(alvo)
+        self.aceite_mm = self.ACEITE_CHEGADA_MM if aceite_mm is None else aceite_mm
         self.fase = FaseMovimento.MOVENDO
         self.pid.reiniciar()
         self._limite_rampa = 0.0
         self._saturado = 0
         self._ticks_parado = 0
         self._ticks_imovel = 0
+        self.reaproximacoes = 0
 
     def retargetar(self, alvo: float) -> None:
         """Muda o alvo em voo (mesmo sentido), preservando a rampa e a velocidade atual."""
@@ -87,17 +100,20 @@ class ControladorPosicao:
     def _passo_freando(self, parado: bool) -> Comando:
         self._ticks_parado = self._ticks_parado + 1 if parado else 0
         if self._ticks_parado >= self.TICKS_PARADO:
-            if abs(self.erro) <= TOLERANCIA_NIVELAMENTO_MM:
+            if abs(self.erro) <= self.aceite_mm:
                 self.fase = FaseMovimento.CHEGOU
-            else:  # parou fora da tolerância: nova aproximação fina
+            else:  # parou fora da margem: nova aproximação fina (a porta nunca abre aqui)
                 self.fase = FaseMovimento.MOVENDO
+                self.reaproximacoes += 1
                 self.pid.reiniciar()
                 self._limite_rampa = 0.0
         return self._emitir(FREIO)
 
     def _passo_movendo(self, velocidade: float, parado: bool, duty_max: float, dt: float) -> Comando:
         erro = self.erro
-        if abs(erro) <= self.FAIXA_PARADA_MM and abs(velocidade) <= self.VELOCIDADE_PARADA_MM_S:
+        previsto = erro - velocidade * self.LATENCIA_FREIO_S  # erro onde a cabine pararia se freasse já
+        ultrapassaria = previsto * erro < 0 and abs(erro) <= 3 * TOLERANCIA_NIVELAMENTO_MM
+        if (abs(previsto) <= self.FAIXA_PARADA_MM or ultrapassaria) and abs(velocidade) <= self.VELOCIDADE_PARADA_MM_S:
             self.fase = FaseMovimento.FREANDO
             self._ticks_parado = 0
             return self._emitir(FREIO)

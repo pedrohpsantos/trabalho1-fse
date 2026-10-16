@@ -1,4 +1,9 @@
-"""CRC-16/MODBUS (polinômio 0xA001), transmitido em little-endian (CRC_LO, CRC_HI)."""
+"""CRC-16 do simulador (polinômio refletido 0xA001, valor inicial 0x0000), em little-endian.
+
+É o `crc16.c` de referência da disciplina (CRC-16/ARC). NÃO é o CRC-16/MODBUS padrão
+(init 0xFFFF): com init 0xFFFF o simulador descarta todos os quadros. Os quadros literais
+do enunciado (Entrega 2, Seção 3.3) são verificados em `tests/test_modbus.py`.
+"""
 
 
 def _gerar_tabela() -> tuple[int, ...]:
@@ -15,7 +20,7 @@ _TABELA = _gerar_tabela()
 
 
 def calcular_crc16(dados: bytes) -> int:
-    crc = 0xFFFF
+    crc = 0x0000
     for byte in dados:
         crc = (crc >> 8) ^ _TABELA[(crc ^ byte) & 0xFF]
     return crc

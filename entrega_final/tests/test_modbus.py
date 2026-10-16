@@ -33,7 +33,30 @@ def cliente_para(bancada, falhas=None, tentativas=3):
 
 
 def test_crc16_vetor_conhecido():
-    assert calcular_crc16(b"123456789") == 0x4B37
+    assert calcular_crc16(b"123456789") == 0xBB3D  # CRC-16/ARC (init 0x0000), não CRC-16/MODBUS
+
+
+@pytest.mark.parametrize(
+    "quadro",
+    [
+        # Exemplos literais do enunciado (Entrega 2, Seção 3.3), matrícula 654321.
+        "11 03 00 00 09 00 06 05 04 03 02 01 0E E4",
+        "20 10 05 00 02 00 04 FD 00 F5 03 06 05 04 03 02 01 56 C3",
+        "20 10 00 05 00 02 57 63",
+        "11 83 02 B0 F4",
+    ],
+)
+def test_crc16_bate_com_os_quadros_do_enunciado(quadro):
+    assert verificar_crc16(bytes.fromhex(quadro))
+
+
+def test_quadros_gerados_pelo_cliente_identicos_ao_enunciado(bancada):
+    uart = UartEspiao(bancada)
+    cliente = ClienteModbus(uart, "654321", intervalo_retry_s=0)
+    cliente.ler_registradores(0x11, 0, 9)
+    cliente.escrever_registradores(ENDERECO_PREDIO, 5, [253, 1013])
+    assert uart.enviados[0] == bytes.fromhex("11 03 00 00 09 00 06 05 04 03 02 01 0E E4")
+    assert uart.enviados[1] == bytes.fromhex("20 10 05 00 02 00 04 FD 00 F5 03 06 05 04 03 02 01 56 C3")
 
 
 def test_crc_anexo_little_endian_e_verificacao():
@@ -64,6 +87,8 @@ def test_leitura_0x03_formato_da_requisicao_e_valores_big_endian(bancada):
 
 
 def test_escrita_0x10_formato_e_efeito(bancada):
+    fis = bancada.cabines[1]
+    fis.x = fis.geometria.andares_mm[0]  # nivelada: o simulador só abre a porta no nível
     cliente, uart = cliente_para(bancada)
     cliente.escrever_registradores(0x11, 3, [int(PortaComando.ABRIR)])
     req = uart.enviados[0]
@@ -131,3 +156,44 @@ def test_leitura_predio_endereco_correto(bancada):
     cliente, uart = cliente_para(bancada)
     ApiSimulador(cliente).ler_predio()
     assert uart.enviados[0][0] == ENDERECO_PREDIO
+
+
+def test_uart_serial_reabre_a_porta_apos_erro_de_e_s(monkeypatch):
+    serial = pytest.importorskip("serial")
+    from elevador.modbus import uart as modulo_uart
+
+    resposta = anexar_crc16(b"\x20\x10\x00\x05\x00\x02")
+    aberturas = []
+
+    class SerialFalsa:
+        def __init__(self, **_k):
+            aberturas.append(self)
+            self.is_open = True
+            self._buf = b""
+
+        def reset_input_buffer(self):
+            self._buf = b""
+
+        def reset_output_buffer(self):
+            pass
+
+        def write(self, _quadro):
+            if len(aberturas) == 1:
+                raise serial.SerialException("device reports readiness to read but returned no data")
+            self._buf = resposta
+
+        def flush(self):
+            pass
+
+        def read(self, n):
+            dados, self._buf = self._buf[:n], self._buf[n:]
+            return dados
+
+        def close(self):
+            self.is_open = False
+
+    monkeypatch.setattr(modulo_uart.serial, "Serial", SerialFalsa)
+    monkeypatch.setattr(modulo_uart.time, "sleep", lambda _s: None)
+    cliente = ClienteModbus(modulo_uart.UartSerial("/dev/null", 0.2), "038442", intervalo_retry_s=0)
+    cliente.escrever_registradores(ENDERECO_PREDIO, 5, [253, 1013])  # 1ª tentativa falha, 2ª reabre
+    assert len(aberturas) == 2 and not aberturas[0].is_open

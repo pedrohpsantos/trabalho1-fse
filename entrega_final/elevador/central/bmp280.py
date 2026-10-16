@@ -75,22 +75,38 @@ def compensar(cal: Calibracao, adc_t: int, adc_p: int) -> Leitura:
 
 
 class Bmp280(SensorAmbiente):
+    """BMP280 real. Se o sensor não responder, `ler()` lança `OSError` e reconecta na próxima
+    chamada: nunca inventa leitura (o Central deixa o watchdog do simulador agir, falha segura)."""
+
     def __init__(self, barramento: int = 1, endereco: int = ENDERECO_I2C) -> None:
         if SMBus is None:
             raise RuntimeError("smbus2 não instalado: use `pip install smbus2` ou --mock")
         self.endereco = endereco
         self._bus = SMBus(barramento)
-        chip = self._bus.read_byte_data(endereco, REG_ID)
+        self._cal: Calibracao | None = None
+        try:
+            self._conectar()
+        except OSError as erro:
+            log.error("BMP280 I2C 0x%02X sem resposta na partida (%s); nova tentativa a cada leitura", endereco, erro)
+
+    def _conectar(self) -> None:
+        chip = self._bus.read_byte_data(self.endereco, REG_ID)
         if chip not in ID_BMP280:
-            self._bus.close()
-            raise RuntimeError(f"dispositivo 0x{endereco:02X} não é um BMP280 (id=0x{chip:02X})")
-        self._cal = Calibracao.de_bytes(bytes(self._bus.read_i2c_block_data(endereco, REG_CALIB, 24)))
+            raise OSError(f"dispositivo 0x{self.endereco:02X} não é um BMP280 (id=0x{chip:02X})")
+        self._cal = Calibracao.de_bytes(bytes(self._bus.read_i2c_block_data(self.endereco, REG_CALIB, 24)))
+        log.info("BMP280 detectado em 0x%02X (id=0x%02X)", self.endereco, chip)
 
     def ler(self) -> Leitura:
-        # Modo forçado, oversampling x1 para T e P: uma conversão por leitura.
-        self._bus.write_byte_data(self.endereco, REG_CTRL_MEAS, 0b001_001_01)
-        threading.Event().wait(0.012)  # conversão típica: 6,4 ms
-        d = self._bus.read_i2c_block_data(self.endereco, REG_DADOS, 6)
+        if self._cal is None:
+            self._conectar()
+        try:
+            # Modo forçado, oversampling x1 para T e P: uma conversão por leitura.
+            self._bus.write_byte_data(self.endereco, REG_CTRL_MEAS, 0b001_001_01)
+            threading.Event().wait(0.012)  # conversão típica: 6,4 ms
+            d = self._bus.read_i2c_block_data(self.endereco, REG_DADOS, 6)
+        except OSError:
+            self._cal = None  # força reidentificação do chip na próxima leitura
+            raise
         adc_p = (d[0] << 12) | (d[1] << 4) | (d[2] >> 4)
         adc_t = (d[3] << 12) | (d[4] << 4) | (d[5] >> 4)
         return compensar(self._cal, adc_t, adc_p)

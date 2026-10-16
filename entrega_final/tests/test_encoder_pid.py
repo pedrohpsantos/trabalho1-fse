@@ -161,3 +161,40 @@ def test_reancorar_nao_gera_pico_derivativo():
     pid.calcular(100.0, 0.05)
     pid.deslocar_erro(-7.0)  # posição deslocada +7 mm
     assert pid.calcular(93.0, 0.05) == pytest.approx(0.0)
+
+
+def rodar_planta_bancada(ctrl, pos, duty_max, ate=4000):
+    """Planta calibrada pelos CSVs da rasp32 (Pi 3 + ESP32): ~9,6 mm/s por 1 % de duty,
+    aceleração com constante de ~0,15 s, atrito estático de 10 % (abaixo disso a cabine
+    "gruda" logo que perde velocidade), freio com ~1 tick de inércia e encoder lido com
+    1 tick de atraso. Reproduz o stick-slip de ~8 mm por pulso visto perto do alvo."""
+    v, medida = 0.0, pos
+    for _ in range(ate):
+        cmd = ctrl.passo(round(medida), duty_max, 0.05)
+        medida = pos  # o controle enxerga a posição do tick anterior
+        sinal = 1 if cmd.direcao == Direcao.SUBIR else -1
+        if cmd.direcao in (Direcao.SUBIR, Direcao.DESCER) and (abs(v) > 20 or cmd.duty >= DUTY_ATRITO_ESTATICO):
+            v += (9.6 * cmd.duty * sinal - v) * (0.05 / 0.15)
+        else:
+            v *= 0.35  # freio/livre: perde ~65 % da velocidade por tick
+            if abs(v) < 20:
+                v = 0.0
+        pos += v * 0.05
+        if ctrl.chegou:
+            return pos
+    return None
+
+
+@pytest.mark.parametrize("duty_max", [1000 / 60, 3000 / 60, 100.0])
+@pytest.mark.parametrize("distancia", [-14870, -3000, -60, -26, -12, 9, 18, 40, 2865, 14870])
+def test_chegada_com_margem_para_a_tolerancia_na_planta_da_bancada(duty_max, distancia):
+    """Regressão da rasp32: a cabine 3 parou a 10 mm do alvo e o simulador recusou a porta.
+
+    A chegada tem de ficar a <= 5 mm (metade da tolerância), sobrando margem para o erro
+    residual de calibração/deriva entre o encoder e o andar real.
+    """
+    ctrl = ControladorPosicao(Pid(0.5, 0.02, 5.0))
+    ctrl.ir_para(20000.0 + distancia)
+    final = rodar_planta_bancada(ctrl, 20000.0, duty_max)
+    assert final is not None, "não chegou"
+    assert abs(final - ctrl.alvo) <= ControladorPosicao.ACEITE_CHEGADA_MM

@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from ..constantes import (
+    CAPACIDADE_PASSAGEIROS,
     NUM_ANDARES,
     WATCHDOG_AMBIENTE_S,
     Cenario,
@@ -63,6 +64,7 @@ class PredioSimulado:
         self._soma_espera = 0.0
         self._soma_viagem = 0.0
         self.chamadas_perdidas = 0
+        self.sobrecargas = 0
 
     # --- chamadas ---------------------------------------------------------------
     def registrar_chamada(self, origem: int, destino: int, t: float) -> ChamadaSim:
@@ -89,16 +91,21 @@ class PredioSimulado:
 
     def porta_aberta(self, cabine: int, andar: int, t: float) -> None:
         """Chamado quando a porta de `cabine` abre nivelada em `andar`."""
-        for c in self.chamadas.values():
-            if c.cabine != cabine:
-                continue
-            if c.t_embarque is None and c.origem == andar:
-                c.t_embarque = t
-                self._soma_espera += t - c.t_registro
-            elif c.t_embarque is not None and c.t_desembarque is None and c.destino == andar:
+        minhas = [c for c in self.chamadas.values() if c.cabine == cabine]
+        for c in minhas:  # desembarques primeiro, depois embarques por ordem de registro (lotação)
+            if c.t_embarque is not None and c.t_desembarque is None and c.destino == andar:
                 c.t_desembarque = t
                 self._soma_viagem += t - c.t_embarque
                 self.atendidas += 1
+        a_bordo = sum(1 for c in minhas if c.t_embarque is not None and c.t_desembarque is None)
+        for c in sorted(minhas, key=lambda c: c.t_registro):
+            if c.t_embarque is None and c.origem == andar:
+                if a_bordo >= CAPACIDADE_PASSAGEIROS:
+                    self.sobrecargas += 1  # como o firmware: falha 0x10 e o passageiro fica
+                    continue
+                c.t_embarque = t
+                a_bordo += 1
+                self._soma_espera += t - c.t_registro
 
     # --- escrita de registradores --------------------------------------------------
     def escrever(self, registrador: int, valor: int, t: float) -> bool:

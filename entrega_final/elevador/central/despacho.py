@@ -19,9 +19,9 @@ Anti-inanição: a agenda de cada cabine promove embarques com mais de 45 s de e
 import logging
 from dataclasses import dataclass, field
 
-from ..constantes import NUM_ANDARES, Cenario
+from ..constantes import CAPACIDADE_PASSAGEIROS, NUM_ANDARES, Cenario
 from ..dominio.agenda import ID_MANUAL_BASE, Agenda, Sentido, Tarefa
-from ..dominio.estimativa import ParametrosTempo, estimar
+from ..dominio.estimativa import ParametrosTempo, estimar, ocupacao_maxima
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +51,8 @@ class EstadoCabineCentral:
     nivelado: bool = False
     falha: str = ""
     ts_telemetria: float = 0.0
+    reserva_ate: float = float("-inf")  # caiu em movimento: reserva a corrente do pouso degradado
+    partida_desde: float = float("inf")  # desde quando pede Cota para partir (ordem de admissão)
     andares_mm: list[float] = field(default_factory=list)
     agenda: Agenda = field(default_factory=Agenda)  # espelho das tarefas reais atribuídas
 
@@ -108,9 +110,20 @@ class Despachante:
             custo += PENALIDADE_DEGRADADA
         return custo
 
+    def cabe(self, cab: EstadoCabineCentral, nova: Tarefa, agora: float) -> bool:
+        """A nova viagem não leva a ocupação prevista acima da lotação (8 passageiros)."""
+        sentido = Sentido(cab.sentido) if cab.sentido in ("subindo", "descendo") else Sentido.PARADO
+        agenda = cab.agenda.copiar()
+        agenda.adicionar(nova)
+        alvo = cab.alvo if cab.alvo >= 0 else None
+        porta_aberta = cab.estado in ("embarque", "abrindo_porta")
+        ocupacao = ocupacao_maxima(agenda, cab.andar, sentido, agora, self.params, alvo, porta_aberta)
+        return ocupacao <= CAPACIDADE_PASSAGEIROS
+
     def escolher_cabine(self, origem: int, destino: int, agora: float, id_: int = 0) -> int | None:
+        """Cabine de menor custo entre as aptas e com lugar; None => a chamada espera na fila."""
         nova = Tarefa(id_, origem, destino, agora)
-        candidatas = [c for c in self.cabines.values() if c.disponivel()]
+        candidatas = [c for c in self.cabines.values() if c.disponivel() and self.cabe(c, nova, agora)]
         if not candidatas:
             return None
         return min(candidatas, key=lambda c: (self.custo(c, nova, agora), c.numero)).numero

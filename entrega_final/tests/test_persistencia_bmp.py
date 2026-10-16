@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from elevador.central.bmp280 import Bmp280Simulado, Calibracao, compensar
+from elevador.central import bmp280 as modulo_bmp
+from elevador.central.bmp280 import Bmp280, Bmp280Simulado, Calibracao, compensar
 from elevador.central.despacho import Chamada, Despachante
 from elevador.central.persistencia import Persistencia
 
@@ -23,6 +24,55 @@ def test_calibracao_a_partir_dos_24_bytes():
 
     bruto = struct.pack("<HhhHhhhhhhhh", *CAL.__dict__.values())
     assert Calibracao.de_bytes(bruto) == CAL
+
+
+class SMBusFalso:
+    """Barramento I2C falso: o BMP280 só passa a responder quando `presente` vira True."""
+
+    presente = False
+
+    def __init__(self, _barramento):
+        self.fechado = False
+
+    def _checar(self):
+        if not SMBusFalso.presente:
+            raise OSError(121, "Remote I/O error")
+
+    def read_byte_data(self, _end, reg):
+        self._checar()
+        assert reg == 0xD0
+        return 0x58
+
+    def read_i2c_block_data(self, _end, reg, n):
+        self._checar()
+        if reg == 0x88:
+            import struct
+
+            return list(struct.pack("<HhhHhhhhhhhh", *CAL.__dict__.values()))
+        # adc_p = 415148, adc_t = 519888 (exemplo do datasheet) em 20 bits
+        p, t = 415148 << 4, 519888 << 4
+        return [p >> 16, (p >> 8) & 0xFF, p & 0xFF, t >> 16, (t >> 8) & 0xFF, t & 0xFF][:n]
+
+    def write_byte_data(self, _end, _reg, _valor):
+        self._checar()
+
+    def close(self):
+        self.fechado = True
+
+
+def test_bmp280_ausente_nunca_inventa_leitura_e_reconecta(monkeypatch):
+    monkeypatch.setattr(modulo_bmp, "SMBus", SMBusFalso)
+    SMBusFalso.presente = False
+    sensor = Bmp280()  # partida sem o sensor: não aborta o Central
+    for _ in range(2):
+        with pytest.raises(OSError):
+            sensor.ler()  # sem leitura falsa: o watchdog do simulador assume o piso
+    SMBusFalso.presente = True
+    leitura = sensor.ler()
+    assert leitura.temperatura_c == pytest.approx(25.08, abs=0.01)
+    SMBusFalso.presente = False
+    with pytest.raises(OSError):
+        sensor.ler()
 
 
 def test_sensor_simulado_oscila_pouco_e_pode_falhar():

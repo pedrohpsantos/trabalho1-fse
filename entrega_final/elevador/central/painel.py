@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 PORTAS = {0: "fechada", 1: "abrindo", 2: "aberta", 3: "fechando", 4: "obstruída"}
 CENARIOS = {0: "nenhum", 1: "up-peak", 2: "down-peak", 3: "interfloor"}
-AJUDA = "Comandos: ir <cabine 1-3> <andar 0-5> | recalibrar <cabine> | diag | ajuda | sair\n"
+AJUDA = "Comandos: ir <cabine 1-3> <andar 0-5> | recalibrar <cabine> | cotas off|on | diag | ajuda | sair\n"
 
 
 @dataclass
@@ -29,6 +29,7 @@ class VisaoPainel:
     pendentes: list[str]
     em_atendimento: list[str]
     erros_modbus: int
+    cotas_suspensas: bool = False
 
 
 def renderizar(v: VisaoPainel) -> str:
@@ -39,7 +40,7 @@ def renderizar(v: VisaoPainel) -> str:
         f"P={'--' if v.pressao_hpa is None else f'{v.pressao_hpa:.1f}'} hPa | erros MODBUS: {v.erros_modbus}",
         f"Cenário: {CENARIOS.get(v.cenario, v.cenario)} | geradas {v.geradas} | atendidas {v.atendidas} | "
         f"espera média {v.espera_s:.1f} s | viagem média {v.viagem_s:.1f} s",
-        "",
+        "*** COTAS SUSPENSAS (teste do Modo Degradado): `cotas on` retoma ***" if v.cotas_suspensas else "",
         f"{'Cab':<4}{'Estado':<19}{'Andar':<6}{'Pos(mm)':>9} {'Sentido':<9}{'Porta':<10}"
         f"{'Corr(mA)':>9}{'Cota(mA)':>9}  Modo",
     ]

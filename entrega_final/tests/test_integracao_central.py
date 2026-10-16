@@ -140,7 +140,14 @@ def test_central_ponta_a_ponta_chamada_cota_ambiente_e_porta(ambiente):
     assert aguardar(lambda: len(servico.persistencia.ler_viagens()) == 1)
     assert servico.persistencia.ler_viagens()[0]["cabine_atribuida"] == cabine
 
-    # 5) Comando de porta repassado pelo Central (único dono da UART) e espelho MODBUS devolvido
+    # 5) Comando de porta repassado pelo Central (único dono da UART) com intertravamento:
+    #    fora do nível o ABRIR NÃO chega ao simulador e a cabine é avisada.
+    fis = bancada.cabines[1]
+    fis.x = fis.geometria.andares_mm[0] + 20.0
+    cabines[0].canal.enviar("porta_cmd", cabine=1, cmd=1)
+    assert aguardar(lambda: cabines[0].de_tipo("porta_recusada"))
+    assert fis.porta == PortaEstado.FECHADA and servico.portas_recusadas == 1
+    fis.x = fis.geometria.andares_mm[0]  # nivelada: o ABRIR é repassado
     cabines[0].canal.enviar("porta_cmd", cabine=1, cmd=1)
     assert aguardar(lambda: bancada.cabines[1].porta in (PortaEstado.ABRINDO, PortaEstado.ABERTA))
     cabines[0].canal.enviar("pedir_modbus", cabine=1)
@@ -152,14 +159,14 @@ def test_central_ponta_a_ponta_chamada_cota_ambiente_e_porta(ambiente):
     assert servico.comando("ir 9 1").startswith("uso")
 
 
-def test_cota_zero_para_ociosas_e_renegociacao_imediata(ambiente):
+def test_cota_de_repouso_para_ociosas_e_renegociacao_imediata(ambiente):
     _, iniciar, cabines = ambiente
     servico = iniciar()
     cabines.extend(CabineFalsa(servico.rede.porta, n) for n in (1, 2, 3))
     assert aguardar(lambda: all(servico.rede.conectada(n) for n in (1, 2, 3)))
     for c in cabines:
         c.telemetria("nenhuma", "ociosa")
-    assert aguardar(lambda: all(c.de_tipo("cota") and c.de_tipo("cota")[-1]["cota_ma"] == 0 for c in cabines))
+    assert aguardar(lambda: all(c.de_tipo("cota") and c.de_tipo("cota")[-1]["cota_ma"] == 300 for c in cabines))
     n_antes = len(cabines[0].de_tipo("cota"))
     cabines[0].telemetria("partida", "ociosa")  # uma cabine passa a precisar partir
     assert aguardar(lambda: cabines[0].de_tipo("cota")[-1]["cota_ma"] >= 1000, 0.9)  # bem antes de 1 s
@@ -195,3 +202,57 @@ def test_leitura_i2c_falha_nao_reenvia_dado_velho_apos_20s():
     from elevador.central import servico as modulo
 
     assert modulo.IDADE_MAX_LEITURA_AMBIENTE_S < 30.0  # watchdog do simulador
+
+
+def test_cotas_off_suspende_renovacao_e_on_retoma(ambiente):
+    """Teste 1 do Modo Degradado com o Central vivo: sem renovação a Cota expira em 2 s."""
+    _, iniciar, cabines = ambiente
+    servico = iniciar()
+    cabines.append(CabineFalsa(servico.rede.porta, 1))
+    assert aguardar(lambda: servico.rede.conectada(1))
+    cabines[0].telemetria("partida")
+    assert aguardar(lambda: len(cabines[0].de_tipo("cota")) >= 1)
+    assert servico.comando("cotas off").startswith("Cotas suspensas")
+    assert servico.visao().cotas_suspensas
+    time.sleep(0.2)
+    n = len(cabines[0].de_tipo("cota"))
+    cabines[0].telemetria("movendo", "movendo")  # mudança de demanda NÃO pode gerar Cota
+    time.sleep(2.3)
+    assert len(cabines[0].de_tipo("cota")) == n
+    assert servico.comando("cotas on") == "Cotas retomadas"
+    assert aguardar(lambda: len(cabines[0].de_tipo("cota")) > n, 1.0)
+
+
+def test_cabine_que_cai_em_movimento_tem_corrente_de_pouso_reservada(ambiente):
+    _, iniciar, cabines = ambiente
+    servico = iniciar()
+    cabines.extend(CabineFalsa(servico.rede.porta, n) for n in (1, 2))
+    assert aguardar(lambda: servico.rede.conectada(1) and servico.rede.conectada(2))
+    cabines[0].telemetria("movendo", "movendo")
+    cabines[1].telemetria("movendo", "movendo")
+    assert aguardar(lambda: servico.despacho.cabines[1].necessidade == "movendo")
+    cabines[0].fechar()  # cabine 1 cai em movimento: pousa em Modo Degradado com até 1000 mA
+    assert aguardar(lambda: not servico.rede.conectada(1))
+    assert aguardar(lambda: servico._cotas[1] == 1000)
+    assert servico._cotas[1] + servico._cotas[2] <= servico.barramento_atual()
+    limite = servico.barramento_atual() - 1000
+    assert aguardar(lambda: cabines[1].de_tipo("cota") and cabines[1].de_tipo("cota")[-1]["cota_ma"] <= limite)
+
+
+def test_renegociacao_reduz_antes_de_conceder(ambiente):
+    """Break-before-make: quem perde Cota recebe a redução antes de quem ganha a concessão."""
+    _, iniciar, cabines = ambiente
+    servico = iniciar()
+    cabines.extend(CabineFalsa(servico.rede.porta, n) for n in (1, 2, 3))
+    assert aguardar(lambda: all(servico.rede.conectada(n) for n in (1, 2, 3)))
+    cabines[0].telemetria("movendo", "movendo")
+    cabines[2].telemetria("movendo", "movendo")
+    cabines[1].telemetria("nenhuma", "ociosa")
+    assert aguardar(lambda: cabines[0].de_tipo("cota") and cabines[0].de_tipo("cota")[-1]["cota_ma"] > 4900)
+    alta = cabines[0].de_tipo("cota")[-1]["cota_ma"]
+    t0 = time.time()
+    cabines[1].telemetria("partida", "ociosa")
+    assert aguardar(lambda: cabines[1].de_tipo("cota")[-1]["cota_ma"] >= 1000, 2.0)
+    reducao = next(m for m in cabines[0].de_tipo("cota") if m["ts"] >= t0 and m["cota_ma"] < alta)
+    concessao = next(m for m in cabines[1].de_tipo("cota") if m["ts"] >= t0 and m["cota_ma"] >= 1000)
+    assert reducao["seq"] < concessao["seq"] and concessao["ts"] - reducao["ts"] >= 0.25

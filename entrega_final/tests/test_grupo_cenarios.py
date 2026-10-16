@@ -29,7 +29,7 @@ def test_invariantes_do_despacho_por_cenario(cenario, semente):
     assert g.bancada.metricas.tempo_sobrecarga_s == 0.0  # corrente real nunca passou do barramento
     v = g.bancada.violacoes()
     assert v["porta_fora_nivel"] == 0 and v["movimento_porta_aberta"] == 0
-    assert v["chamadas_perdidas"] == 0 and v["fim_de_curso"] == 0
+    assert v["chamadas_perdidas"] == 0 and v["fim_de_curso"] == 0 and v["sobrecarga_lotacao"] == 0
     # métricas consolidadas pelo simulador batem com as observadas
     assert predio.registradores(g.bancada.t)[13] == predio.atendidas
 

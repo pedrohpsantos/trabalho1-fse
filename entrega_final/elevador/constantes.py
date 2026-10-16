@@ -24,6 +24,16 @@ CAPACIDADE_NOMINAL_MA = 12000
 PISO_BARRAMENTO_MA = 3000
 COTA_VALIDADE_S = 2.0
 COTA_DEGRADADA_MA = 1000
+# Modelo de corrente do firmware, medido na rasp32 (CSV da malha x `corrente_ma`):
+#   I = 300 mA (repouso, mesmo parada) + 57 mA por ponto de duty  => 6000 mA a 100 %.
+# A conversão do enunciado (duty = cota/6000) ignora o repouso e deixa a corrente real
+# ~200 mA acima da Cota; por isso o limite de duty usa as duas e o Central reserva o repouso.
+CORRENTE_REPOUSO_MA = 300
+CORRENTE_MA_POR_PCT = 57.0
+MARGEM_BARRAMENTO = 0.95  # ruído de ±10 % na corrente medida (jitter do PWM por software)
+# Cota mínima para INICIAR uma viagem (~16 % de duty). Abaixo disso o jitter do PWM por
+# software domina: a 11 % o p90 da corrente medida chega a +27 % da Cota; a 17 %, +4 %.
+COTA_MIN_PARTIDA_MA = 1200
 PERIODO_RENOVACAO_COTA_S = 1.0
 WATCHDOG_AMBIENTE_S = 30.0
 
@@ -34,6 +44,10 @@ PERIODO_AMBIENTE_S = 2.5  # o enunciado exige no máximo 5 s
 
 # --- Despacho (Seção 7.5) ---------------------------------------------------
 LIMITE_ESPERA_S = 90.0
+# Lotação do firmware (medida na rasp32 pelos registradores 5/6): 75 kg por passageiro e no
+# máximo 8 a bordo (600 kg). Embarcar além disso liga a falha 0x10 "sobrecarga".
+CAPACIDADE_PASSAGEIROS = 8
+KG_POR_PASSAGEIRO = 75
 
 # --- MODBUS (Seção 5) -------------------------------------------------------
 ENDERECO_PREDIO = 0x20
@@ -134,8 +148,19 @@ class Cenario(IntEnum):
 
 
 def duty_max_da_cota(cota_ma: float) -> float:
-    """Converte a Cota de Potência em limite de duty (Seção 7.2)."""
-    return max(0.0, min(100.0, cota_ma / CORRENTE_MAX_CABINE_MA * 100.0))
+    """Converte a Cota de Potência em limite de duty (Seção 7.2).
+
+    Teto do enunciado `cota/6000·100`, restringido pelo modelo medido do firmware para que a
+    corrente real (repouso incluído) não passe da Cota: `(cota − 300)/57`.
+    """
+    enunciado = cota_ma / CORRENTE_MAX_CABINE_MA * 100.0
+    modelo = (cota_ma - CORRENTE_REPOUSO_MA) / CORRENTE_MA_POR_PCT
+    return max(0.0, min(100.0, enunciado, modelo))
+
+
+def corrente_estimada_ma(duty: float, acionado: bool = True) -> int:
+    """Corrente do motor segundo o modelo do firmware (repouso + termo do duty)."""
+    return int(CORRENTE_REPOUSO_MA + (CORRENTE_MA_POR_PCT * duty if acionado else 0.0))
 
 
 DUTY_MAX_DEGRADADO = duty_max_da_cota(COTA_DEGRADADA_MA)

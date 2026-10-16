@@ -127,6 +127,8 @@ class Calibrador:
         return FREIO
 
     def _avancar_fase(self) -> None:
+        self._pendentes.clear()
+        self._entrada_pos = self._entrada_ts = None
         if self.fase == FaseCalibracao.HOMING:
             self.fase, self._proximo_id = FaseCalibracao.SUBIDA, 0
         elif self.fase == FaseCalibracao.SUBIDA:
@@ -154,6 +156,7 @@ class Calibrador:
     def _registrar(self, p: _Passagem) -> None:
         sentido = "descida" if self.fase in (FaseCalibracao.HOMING, FaseCalibracao.DESCIDA) else "subida"
         if self.fase == FaseCalibracao.HOMING:
+            self._pos_inicio_fase = p.saida_pos
             if p.andar == 0 and self._alvo_parada is None:
                 self._alvo_parada = p.saida_pos - self.margem_extremo_mm
             return

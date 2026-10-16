@@ -18,7 +18,7 @@ from ..constantes import (
     PortaEstado,
     RegCabine,
 )
-from .fisica import CabineFisica, Geometria, ParametrosPlanta, gerar_geometria
+from .fisica import FALHA_FIM_DE_CURSO, FALHA_SOBRECARGA, CabineFisica, Geometria, ParametrosPlanta, gerar_geometria
 from .predio import PredioSimulado
 
 
@@ -80,6 +80,8 @@ class Bancada:
         m.max_soma_corrente_ma = max(m.max_soma_corrente_ma, soma)
         if soma > limite:
             m.tempo_sobrecarga_s += dt
+            for cabine in self.cabines.values():
+                cabine.falha |= FALHA_SOBRECARGA
 
     # --- MODBUS -----------------------------------------------------------------------
     def ler(self, endereco: int, inicio: int, qtd: int) -> list[int] | None:
@@ -138,7 +140,8 @@ class Bancada:
                 "porta_fora_nivel": sum(c.violacoes_porta_fora_nivel for c in self.cabines.values()),
                 "movimento_porta_aberta": sum(c.violacoes_movimento_porta_aberta for c in self.cabines.values()),
                 "chamadas_perdidas": self.predio.chamadas_perdidas,
-                "fim_de_curso": sum(1 for c in self.cabines.values() if c.falha),
+                "sobrecarga_lotacao": self.predio.sobrecargas,
+                "fim_de_curso": sum(1 for c in self.cabines.values() if c.falha & FALHA_FIM_DE_CURSO),
             }
 
 

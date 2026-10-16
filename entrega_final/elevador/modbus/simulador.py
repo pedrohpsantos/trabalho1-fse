@@ -87,6 +87,15 @@ class ApiSimulador:
         regs = self.cliente.ler_registradores(ENDERECOS_CABINES[cabine], 0, NUM_REGS_CABINE)
         return EstadoCabineModbus.de_registradores(regs)
 
+    def abrir_porta_se_nivelada(self, cabine: int) -> EstadoCabineModbus | None:
+        """Intertravamento da porta (zona de porta): lê a cabine e só escreve ABRIR se o
+        simulador a vê nivelada. Devolve o estado lido quando RECUSA, None quando abriu."""
+        estado = self.ler_cabine(cabine)
+        if not estado.nivelado:
+            return estado
+        self.comandar_porta(cabine, PortaComando.ABRIR)
+        return None
+
     def comandar_porta(self, cabine: int, comando: PortaComando) -> None:
         self.cliente.escrever_registradores(ENDERECOS_CABINES[cabine], RegCabine.PORTA_COMANDO, [int(comando)])
 

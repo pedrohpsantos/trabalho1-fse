@@ -39,8 +39,11 @@ MODBUS_VALIDADE_S = 1.5  # idade máxima do espelho MODBUS para decisões de por
 MARGEM_FREIO_EM_VOO_MM = 700.0
 TOLERANCIA_REANCORAGEM_MM = 150.0
 REENVIO_PORTA_S = 2.0
+REENVIO_PORTA_DEGRADADO_S = 0.5  # o firmware fecha a porta sozinho 3 s após abrir (medido)
 FOLGA_CORTINA_S = 0.5
 RETENTATIVA_CALIBRACAO_S = 3.0
+PORTA_SEM_RESPOSTA_S = 6.0  # ~3 pedidos de abertura ignorados => recentraliza no andar
+ACEITE_RECENTRALIZACAO_MM = 2.0
 
 
 class EstadoCabine(Enum):
@@ -108,6 +111,9 @@ class CabineRuntime:
         self.ultima_correcao_mm = 0
         self.max_erro_nivelamento_mm = 0.0
         self.aberturas = 0
+        self.recentralizacoes = 0
+        self.duty_calibracao = 0.0
+        self._porta_recusada = False
 
     # ------------------------------------------------------------------ entradas assíncronas
     def ao_sensor(self, entrou: bool, pos: int) -> None:
@@ -222,8 +228,7 @@ class CabineRuntime:
     def _tratar_sensor(self, entrou: bool, pos: int, ts: float) -> None:
         if self.estado == EstadoCabine.CALIBRANDO and self._calibrador:
             self._calibrador.ao_borda(entrou, pos, ts)
-            if entrou:
-                self.enlace.enviar("pedir_modbus", cabine=self.numero)
+            self.enlace.enviar("pedir_modbus", cabine=self.numero)
             return
         if not self.calibrada:
             return
@@ -304,6 +309,8 @@ class CabineRuntime:
             self.agenda.adicionar(
                 Tarefa(ID_MANUAL_BASE + self._manual_seq, msg["andar"], msg["andar"], agora, a_bordo=True)
             )
+        elif tipo == "porta_recusada":
+            self._porta_recusada = True
         elif tipo == "recalibrar":
             self.hal.definir_motor(Direcao.FREIO, 0.0)
             self.centros = self.larguras = None
@@ -316,6 +323,11 @@ class CabineRuntime:
         log.info("iniciando calibração")
         self.centros = self.larguras = None
         self._calibrador = Calibrador(self.cfg.params.duty_calibracao, self.cfg.params.margem_extremo_mm)
+        if self._modbus is not None:
+            self._calibrador.ao_modbus(self._modbus["andar_atual"], self._modbus["ts"])
+        if self.hal.sensor_andar_ativo():
+            ts_ref = self._modbus["ts"] if self._modbus is not None else agora
+            self._calibrador.ao_borda(True, self.hal.posicao(), ts_ref)
         self.estado = EstadoCabine.CALIBRANDO
 
     def _passo_calibracao(self, agora: float, pos: int) -> None:
@@ -333,6 +345,7 @@ class CabineRuntime:
             return
         comando = cal.passo(pos, self.cota.duty_max(agora), agora)
         self.hal.definir_motor(comando.direcao, comando.duty)
+        self.duty_calibracao = comando.duty
         if cal.fase == FaseCalibracao.CONCLUIDA and cal.resultado:
             self._concluir_calibracao(cal, pos, agora)
 
@@ -351,9 +364,9 @@ class CabineRuntime:
     def _limite_seguro(self, pos: float) -> bool:
         return self.centros[0] - POCO_MM + 15 <= pos <= self.centros[-1] + SOBRECURSO_MM - 15  # type: ignore[index]
 
-    def _partir_para(self, andar: int, pos: float) -> None:
+    def _partir_para(self, andar: int, pos: float, aceite_mm: float | None = None) -> None:
         self.alvo_andar = andar
-        self.ctrl.ir_para(self.posicao_andar(andar))
+        self.ctrl.ir_para(self.posicao_andar(andar), aceite_mm)
         self.sentido_pref = Sentido.SUBINDO if self.posicao_andar(andar) > pos else Sentido.DESCENDO
         self.estado = EstadoCabine.MOVENDO
 
@@ -453,6 +466,7 @@ class CabineRuntime:
             self._t_cmd_porta = agora
 
     def _abrir_porta(self, agora: float, andar: int) -> None:
+        self._porta_recusada = False
         self.alvo_andar = andar
         self._t_cmd_porta = float("-inf")
         self._t_pedido_abertura = agora
@@ -468,8 +482,30 @@ class CabineRuntime:
         if modbus and modbus["porta_estado"] == PortaEstado.ABERTA and agora - self._t_cmd_porta >= 0.0:
             self._porta_aberta(agora, andar)
             return
+        if self._porta_ignorada(agora, modbus, pos, andar):
+            return
         if agora - self._t_cmd_porta >= REENVIO_PORTA_S:
             self._comandar_porta(PortaComando.ABRIR, agora)
+
+    def _porta_ignorada(self, agora: float, modbus: dict | None, pos: int, andar: int) -> bool:
+        """O simulador não abriu apesar de vários pedidos: o andar real está na borda da faixa.
+
+        Recentraliza com margem estrita (±2 mm pelo encoder) e pede de novo.
+        """
+        recusada, self._porta_recusada = self._porta_recusada, False
+        if not recusada:
+            if modbus is None or modbus["porta_estado"] != PortaEstado.FECHADA:
+                return False
+            if agora - self._t_pedido_abertura < PORTA_SEM_RESPOSTA_S or modbus["ts"] < self._t_pedido_abertura:
+                return False
+        if abs(pos - self.posicao_andar(andar)) <= ACEITE_RECENTRALIZACAO_MM:
+            return False  # já centrada pelo encoder: só resta continuar pedindo
+        self.recentralizacoes += 1
+        log.warning(
+            "porta não abriu no andar %d (erro %+d mm); recentralizando", andar, pos - self.posicao_andar(andar)
+        )
+        self._partir_para(andar, pos, aceite_mm=ACEITE_RECENTRALIZACAO_MM)
+        return True
 
     def _porta_aberta(self, agora: float, andar: int) -> None:
         self.aberturas += 1
@@ -493,12 +529,25 @@ class CabineRuntime:
     def _passo_embarque(self, agora: float, pos: int) -> None:
         self.hal.definir_motor(Direcao.FREIO, 0.0)
         if self.degradado:
-            return  # permanece de porta aberta até receber uma Cota válida
+            self._manter_porta_aberta(agora)
+            return
         if self._cortina or agora - self._t_cortina_livre < FOLGA_CORTINA_S:
             return
         if agora - self._t_aberta >= self.cfg.params.tempo_porta_aberta_s:
             self._t_cmd_porta = float("-inf")
             self.estado = EstadoCabine.FECHANDO_PORTA
+
+    def _manter_porta_aberta(self, agora: float) -> None:
+        """Modo Degradado (Seção 7.3): parada de porta aberta até voltar uma Cota válida.
+
+        O firmware fecha a porta sozinho 3 s depois de aberta; ao ver `fechando`/`fechada` no
+        espelho MODBUS a cabine re-comanda ABRIR (o Central só repassa se estiver nivelada).
+        """
+        modbus = self._modbus_fresco(agora)
+        if modbus is None or modbus["porta_estado"] not in (PortaEstado.FECHANDO, PortaEstado.FECHADA):
+            return
+        if agora - self._t_cmd_porta >= REENVIO_PORTA_DEGRADADO_S:
+            self._comandar_porta(PortaComando.ABRIR, agora)
 
     def _passo_fechando(self, agora: float) -> None:
         self.hal.definir_motor(Direcao.FREIO, 0.0)
@@ -537,7 +586,10 @@ class CabineRuntime:
             return "movendo"
         if self.estado in (EstadoCabine.FALHA, EstadoCabine.AGUARDANDO_CENTRAL):
             return "nenhuma"
-        return "partida" if len(self.agenda) and not self.degradado else "nenhuma"
+        # Só pede Cota de partida quem está pronta para sair: ciclos de porta não seguram
+        # a admissão (na rasp32 duas cabines em ciclo de porta deixaram a terceira sem Cota).
+        pronta = self.estado == EstadoCabine.OCIOSA and len(self.agenda) and not self.degradado
+        return "partida" if pronta else "nenhuma"
 
     def sentido(self) -> str:
         if self.estado == EstadoCabine.MOVENDO:
