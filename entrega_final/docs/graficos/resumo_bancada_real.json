@@ -1,0 +1,67 @@
+{
+ "cabine1": {
+  "centros_mm": [
+   0,
+   3000,
+   6000,
+   8943,
+   11903,
+   14858
+  ],
+  "chegadas": 11,
+  "erro_max_abs_mm": 5.0,
+  "erro_medio_abs_mm": 2.82,
+  "fora_da_tolerancia": 0,
+  "viagem_media_s": 26.0,
+  "periodo_malha_medio_ms": 50.0,
+  "periodo_malha_p99_ms": 50.0,
+  "reancoragens": 17,
+  "correcao_max_abs_mm": 2,
+  "corrente_acima_da_cota_pct_amostras": 16.54,
+  "corrente_acima_da_cota_max_ma": 1573
+ },
+ "cabine2": {
+  "centros_mm": [
+   0,
+   3055,
+   5980,
+   9070,
+   11995,
+   15050
+  ],
+  "chegadas": 12,
+  "erro_max_abs_mm": 5.0,
+  "erro_medio_abs_mm": 3.42,
+  "fora_da_tolerancia": 0,
+  "viagem_media_s": 25.2,
+  "periodo_malha_medio_ms": 50.0,
+  "periodo_malha_p99_ms": 50.0,
+  "reancoragens": 13,
+  "correcao_max_abs_mm": 0,
+  "corrente_acima_da_cota_pct_amostras": 13.47,
+  "corrente_acima_da_cota_max_ma": 1516
+ },
+ "cabine3": {
+  "centros_mm": [
+   0,
+   2865,
+   5935,
+   8850,
+   11915,
+   14870
+  ],
+  "chegadas": 13,
+  "erro_max_abs_mm": 5.0,
+  "erro_medio_abs_mm": 2.85,
+  "fora_da_tolerancia": 0,
+  "viagem_media_s": 22.5,
+  "periodo_malha_medio_ms": 50.0,
+  "periodo_malha_p99_ms": 51.0,
+  "reancoragens": 16,
+  "correcao_max_abs_mm": 10,
+  "corrente_acima_da_cota_pct_amostras": 14.97,
+  "corrente_acima_da_cota_max_ma": 1231
+ },
+ "soma_correntes_max_ma": 6372,
+ "janelas_soma_acima_de_3000_pct": 13.61
+}
