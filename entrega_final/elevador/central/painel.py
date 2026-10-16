@@ -1,6 +1,8 @@
 """Interface de terminal: painel consolidado e leitor de comandos (threads próprias)."""
 
 import logging
+import os
+import shutil
 import sys
 import threading
 import time
@@ -63,8 +65,17 @@ def renderizar(v: VisaoPainel) -> str:
     return "\n".join(linhas)
 
 
+ESC = "\x1b"
+ALTURA_PAINEL = 15  # linhas reservadas no topo (13 do painel + separador + folga)
+
+
 class Painel:
-    """Redesenha o painel a cada segundo e executa comandos digitados, sem bloquear o controle."""
+    """Painel fixo no topo do terminal e linha de comandos embaixo, sem bloquear o controle.
+
+    A faixa de cima é redesenhada a cada segundo salvando/restaurando o cursor (ESC 7 / ESC 8),
+    sem limpar a tela: o que o operador digita na área de baixo (região de rolagem própria,
+    DECSTBM) continua visível. Fora de um terminal (stdout redirecionado) o painel vai para o log.
+    """
 
     def __init__(
         self,
@@ -72,17 +83,50 @@ class Painel:
         comando: Callable[[str], str],
         parar: threading.Event,
         interativo: bool | None = None,
+        saida=None,
+        tamanho: Callable[[], os.terminal_size] | None = None,
     ) -> None:
         self._visao, self._comando, self._parar = visao, comando, parar
-        self.interativo = sys.stdout.isatty() if interativo is None else interativo
-        self._mensagem = ""
+        self._saida = saida or sys.stdout
+        self.interativo = self._saida.isatty() if interativo is None else interativo
+        self._tamanho = tamanho or (lambda: shutil.get_terminal_size((110, 40)))
+        self._trava = threading.Lock()
         self._threads = [threading.Thread(target=self._desenhar, name="painel", daemon=True)]
-        if sys.stdin and sys.stdin.isatty():
+        if self.interativo and sys.stdin and sys.stdin.isatty():
             self._threads.append(threading.Thread(target=self._ler_comandos, name="comandos", daemon=True))
 
     def iniciar(self) -> None:
+        if self.interativo:
+            self._preparar_tela()
         for t in self._threads:
             t.start()
+
+    def encerrar(self) -> None:
+        """Devolve o terminal ao normal (rolagem inteira, cursor no fim)."""
+        if self.interativo:
+            altura = self._tamanho().lines
+            self._escrever(f"{ESC}[r{ESC}[{altura};1H\n")
+
+    # ------------------------------------------------------------------ tela
+    def _escrever(self, texto: str) -> None:
+        with self._trava:
+            self._saida.write(texto)
+            self._saida.flush()
+
+    def _preparar_tela(self) -> None:
+        altura = max(self._tamanho().lines, ALTURA_PAINEL + 4)
+        self._escrever(
+            f"{ESC}[2J{ESC}[{ALTURA_PAINEL + 1};{altura}r{ESC}[{altura};1H"
+            "Digite um comando e Enter (ajuda para a lista).\n> "
+        )
+
+    def _quadro(self, texto: str) -> str:
+        largura = max(20, self._tamanho().columns - 1)
+        linhas = texto.split("\n")[: ALTURA_PAINEL - 1]
+        linhas += [""] * (ALTURA_PAINEL - 1 - len(linhas))
+        linhas.append("─" * largura)
+        corpo = "".join(f"{ESC}[{i};1H{linha[:largura]}{ESC}[K" for i, linha in enumerate(linhas, start=1))
+        return f"{ESC}7{corpo}{ESC}8"
 
     def _desenhar(self) -> None:
         while not self._parar.wait(1.0):
@@ -92,10 +136,15 @@ class Painel:
                 log.exception("falha ao montar o painel")
                 continue
             if self.interativo:
-                sys.stdout.write("\x1b[2J\x1b[H" + texto + (f"\n> {self._mensagem}" if self._mensagem else "") + "\n")
-                sys.stdout.flush()
+                self._escrever(self._quadro(texto))
             else:
                 log.info("painel:\n%s", texto)
+
+    # ------------------------------------------------------------------ comandos
+    def executar(self, linha: str) -> None:
+        """Executa um comando digitado e mostra a resposta na área de comandos."""
+        resposta = self._comando(linha.strip())
+        self._escrever((f"{resposta}\n" if resposta else "") + "> ")
 
     def _ler_comandos(self) -> None:
         while not self._parar.is_set():
@@ -106,4 +155,4 @@ class Painel:
             if not linha:
                 time.sleep(0.5)
                 continue
-            self._mensagem = self._comando(linha.strip())
+            self.executar(linha)

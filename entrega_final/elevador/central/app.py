@@ -2,6 +2,8 @@
 
 import argparse
 import logging
+import sys
+from pathlib import Path
 
 from ..modbus.cliente import ClienteModbus
 from ..modbus.gerente import GerenteModbus
@@ -48,20 +50,31 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     cfg = carregar_config_central(args.config)
-    configurar_logs("central", args.log_level, args.log_arquivo)
+    com_painel = not args.sem_painel and sys.stdout.isatty()
+    arquivo_log = args.log_arquivo
+    if com_painel and arquivo_log is None:
+        # Com o painel na tela o log vai para arquivo; senão ele embaralharia a área de comandos.
+        arquivo_log = str(Path(cfg.pasta_dados) / "central.log")
+    if arquivo_log:
+        Path(arquivo_log).parent.mkdir(parents=True, exist_ok=True)
+    configurar_logs("central", args.log_level, arquivo_log)
     encerramento = EncerramentoSeguro()
     encerramento.instalar()
     uart, sensor = criar_perifericos(cfg, args.mock, args.bancada, args.temp_mock)
     servico = montar_servico(cfg, uart, sensor)
     encerramento.ao_encerrar(servico.parar.set)
     servico.iniciar()
+    painel = None
     if not args.sem_painel:
-        Painel(servico.visao, servico.comando, servico.parar).iniciar()
+        painel = Painel(servico.visao, servico.comando, servico.parar)
+        painel.iniciar()
     try:
         # Espera com timeout: no Windows um wait() sem prazo não deixa o handler de sinal rodar.
         while not servico.parar.wait(0.5):  # sai por SIGINT/SIGTERM ou pelo comando "sair"
             pass
     finally:
+        if painel:
+            painel.encerrar()
         servico.encerrar()
         uart.fechar()
     return 0
