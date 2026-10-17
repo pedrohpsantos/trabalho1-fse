@@ -1,5 +1,7 @@
 # Entrega Final — Controle de Grupo de Elevadores com Despacho por Destino
 
+*Vídeo de apresentação*: https://youtu.be/qjND2SU4JKI
+
 Sistema distribuído para 6 andares e 3 cabines (FSE 2026/2 — FGA/UnB): **1 Servidor Central + 3 Servidores
 Distribuídos**, quatro processos independentes que cooperam por TCP/IP. Evolui os módulos de GPIO
 (`entrega1/`) e UART/MODBUS (`entrega2/`), que **não foram alterados**; o código desta entrega é autossuficiente.

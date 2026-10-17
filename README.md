@@ -14,7 +14,7 @@ validado na Raspberry Pi da bancada.
 | **Entrega Final** | Servidor Central + 3 Servidores Distribuídos por TCP/IP: calibração por interrupção, PID de posição, Cotas de Potência, Modo Degradado, Despacho por Destino, persistência e interface de terminal | [entrega_final/README.md](./entrega_final/README.md) | — |
 
 Vídeos de apresentação: [Entrega 1](https://youtu.be/1TL6987Bgqs?is=uhtylnDGjsFw261M) ·
-[Entrega 2](https://youtu.be/jIa_jKNr2Eo?is=7PbL-yQusDOndkKr)
+[Entrega 2](https://youtu.be/jIa_jKNr2Eo?is=7PbL-yQusDOndkKr) · [Entrega Final](https://youtu.be/qjND2SU4JKI)
 
 ## Arquitetura da Entrega Final
 
@@ -133,6 +133,15 @@ resultados, os gráficos e as limitações encontradas (como a ausência do BMP2
 |:--|:--|
 | Pedro Henrique | `pedrohpsantos` |
 | Carlos | `Carlos-UCH` |
+
+### Sobre o histórico de commits
+
+O trabalho foi feito em dupla, de forma **presencial e na mesma máquina** nas Entregas 1 e 2; por isso quase todos os
+commits saíram de uma única conta (`pedrohpsantos` / `Pedro Henrique`), embora o código seja dos dois. Seguindo a
+orientação do professor, os dois integrantes constam como coautores: a partir do commit `d9ae363` todos os commits
+levam `Co-authored-by: Carlos-UCH`. Os commits anteriores não puderam ser editados para incluir a coautoria, porque
+a branch `main` do GitLab é protegida contra reescrita de histórico; ainda assim, **todo o trabalho desses commits
+também é de autoria do Carlos**.
 
 Disciplina: **Fundamentos de Sistemas Embarcados** · Período: **2026/2** ·
 Instituição: **Faculdade do Gama — Universidade de Brasília (FGA/UnB)**
