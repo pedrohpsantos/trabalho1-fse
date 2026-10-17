@@ -11,7 +11,7 @@ validado na Raspberry Pi da bancada.
 |:--|:--|:--|:-:|
 | **Entrega 1** | Controle da Cabine 1 por GPIO: ponte H, PWM, encoder em quadratura por interrupção, cortina, sensor de andar, nivelamento e parada segura | [entrega1/README.md](./entrega1/README.md) | `v1.0` |
 | **Entrega 2** | UART com a ESP32: protocolo simplificado, MODBUS modificado (matrícula de 6 dígitos, CRC-16) e funções `0x03`/`0x10` sobre os registradores do simulador | [entrega2/README.md](./entrega2/README.md) | `v2.0` |
-| **Entrega Final** | Servidor Central + 3 Servidores Distribuídos por TCP/IP: calibração por interrupção, PID de posição, Cotas de Potência, Modo Degradado, Despacho por Destino, persistência e interface de terminal | [entrega_final/README.md](./entrega_final/README.md) | — |
+| **Entrega Final** | Servidor Central + 3 Servidores Distribuídos por TCP/IP: calibração por interrupção, PID de posição, Cotas de Potência, Modo Degradado, Despacho por Destino, persistência e interface de terminal | [entrega_final/README.md](./entrega_final/README.md) | `v3.0` |
 
 Vídeos de apresentação: [Entrega 1](https://youtu.be/1TL6987Bgqs?is=uhtylnDGjsFw261M) ·
 [Entrega 2](https://youtu.be/jIa_jKNr2Eo?is=7PbL-yQusDOndkKr) · [Entrega Final](https://youtu.be/qjND2SU4JKI)
